@@ -2,6 +2,7 @@ import argparse
 import numpy as np
 import pickle
 import json
+import sys
 
 import simulator
 
@@ -33,6 +34,7 @@ def write_data(data, datafn, paramsfn, ssmfn, should_write_clusters):
   write_ssms(data['variants'], ssmfn)
 
 def main():
+  np.set_printoptions(linewidth=400, precision=3, threshold=sys.maxsize, suppress=True)
   parser = argparse.ArgumentParser(
     description='LOL HI THERE',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter
@@ -44,6 +46,8 @@ def main():
   parser.add_argument('-S', dest='S', type=int, default=3, help='Number of samples')
   parser.add_argument('-T', dest='T', type=int, default=4000, help='Total reads per mutation')
   parser.add_argument('-M', dest='M', type=int, default=10, help='Number of non-garbage mutations')
+  parser.add_argument('-C', dest='C', type=int, default=50, help='Number of CN events')
+  parser.add_argument('-H', dest='H', type=int, default=30, help='Number of genomic segments')
   parser.add_argument('-G', dest='G', type=int, default=4, help='Number of garbage mutations')
   parser.add_argument('datafn')
   parser.add_argument('paramsfn')
@@ -56,7 +60,16 @@ def main():
     seed = args.seed
   np.random.seed(args.seed)
 
-  data = simulator.generate_data(args.K, args.S, args.T, args.M, args.G, args.tree_type)
+  data = simulator.generate_data(
+    args.K,
+    args.S,
+    args.T,
+    args.M,
+    args.C,
+    args.H,
+    args.G,
+    args.tree_type
+  )
   data['seed'] = seed
   write_data(data, args.datafn, args.paramsfn, args.ssmfn, args.write_clusters)
 

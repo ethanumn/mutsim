@@ -38,7 +38,7 @@ function make_simulated_data {
   done
   done
   done
-  done | parallel -j$PARALLEL --halt 1
+  done #| parallel -j$PARALLEL --halt 1
 }
 
 function main {
