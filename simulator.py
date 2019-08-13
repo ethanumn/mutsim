@@ -70,9 +70,6 @@ def assign_ssms(K, M):
   # Ensure every cluster has at least one mutation.
   assert M >= K
   first_ssmass = np.arange(K)
-  if M == K:
-    return first_ssmass
-  
   probs = np.random.dirichlet(alpha=K*[1])
   remaining_ssmass = np.random.choice(K, p=probs, size=(M - K))
   ssmass = np.concatenate((first_ssmass, remaining_ssmass))
@@ -89,7 +86,9 @@ def make_clusters(ssmass):
   clusters = [clusters[cidx] for cidx in sorted(clusters.keys())]
   return clusters
 
-def make_variants(V, T, omega_v):
+def make_variants(phi_mutations, T, omega_v):
+  V, T = generate_read_counts(phi_mutations, omega_v, T)
+
   variants = OrderedDict()
   for midx in range(len(omega_v)):
     variant = {
@@ -98,6 +97,7 @@ def make_variants(V, T, omega_v):
       'var_reads': V[midx],
       'total_reads': T[midx],
       'omega_v': omega_v[midx],
+      'phi': phi_mutations[midx],
     }
     variant['ref_reads'] = variant['total_reads'] - variant['var_reads']
     variant['vaf'] = variant['var_reads'] / variant['total_reads']
@@ -213,12 +213,10 @@ def generate_data(K, S, T, M, C, H, G, tree_type):
   phi_mutations = np.vstack((phi_good_mutations, phi_garbage))
 
   segs = segment_genome(H)
-  cn_pops, cn_segs, cn_phases, cn_deltas, alleles = generate_cnas(K, C, segs, adjm)
+  #cn_pops, cn_segs, cn_phases, cn_deltas, alleles = generate_cnas(K, C, segs, adjm)
 
   omega_v = np.broadcast_to(0.5, (M + G, S))
-  V, T = generate_read_counts(phi_mutations, omega_v, T)
-
-  variants = make_variants(V, T, omega_v)
+  variants = make_variants(phi_mutations, T, omega_v)
   vids_good = ['s%s' % vidx for vidx in range(M)]
   vids_garbage = ['s%s' % vidx for vidx in range(M, M + G)]
   assert set(vids_good) == set([V for C in clusters for V in C])
@@ -232,9 +230,9 @@ def generate_data(K, S, T, M, C, H, G, tree_type):
     'vids_good': vids_good,
     'vids_garbage': vids_garbage,
     'segments': segs,
-    'cn_pops': cn_pops,
-    'cn_segs': cn_segs,
-    'cn_phases': cn_phases,
-    'cn_deltas': cn_deltas,
-    'alleles': alleles,
+    #'cn_pops': cn_pops,
+    #'cn_segs': cn_segs,
+    #'cn_phases': cn_phases,
+    #'cn_deltas': cn_deltas,
+    #'alleles': alleles,
   }

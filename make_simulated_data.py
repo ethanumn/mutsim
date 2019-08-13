@@ -6,22 +6,27 @@ import sys
 
 import simulator
 
-def write_ssms(variants, ssm_fn):
-  keys = ('id', 'name', 'var_reads', 'total_reads', 'var_read_prob')
+def write_ssms(data, ssm_fn, write_ssm_phi):
+  fields = ['id', 'name', 'var_reads', 'total_reads', 'var_read_prob']
+  vector_fields = ['var_reads', 'total_reads', 'omega_v']
+  if write_ssm_phi:
+    fields.append('phi')
+    vector_fields.append('phi')
 
   with open(ssm_fn, 'w') as outf:
-    print(*keys, sep='\t', file=outf)
-    for V in variants.values():
+    print(*fields, sep='\t', file=outf)
+    for V in data['variants'].values():
       V = dict(V) # Don't modify original variant.
-      for K in ('var_reads', 'total_reads', 'omega_v'):
+      for K in vector_fields:
         V[K] = ','.join([str(R) for R in V[K]])
       V['var_read_prob'] = V['omega_v']
-      print(*[V[K] for K in keys], sep='\t', file=outf)
+      print(*[V[K] for K in fields], sep='\t', file=outf)
 
-def write_data(data, datafn, paramsfn, ssmfn, should_write_clusters):
+def write_full_data(data, datafn):
   with open(datafn, 'wb') as outf:
     pickle.dump(data, outf)
 
+def write_params(data, paramsfn, should_write_clusters):
   with open(paramsfn, 'w') as outf:
     params = {
       'samples': data['sampnames'],
@@ -30,8 +35,6 @@ def write_data(data, datafn, paramsfn, ssmfn, should_write_clusters):
       params['clusters'] = data['clusters']
       params['garbage'] = data['vids_garbage']
     json.dump(params, outf)
-
-  write_ssms(data['variants'], ssmfn)
 
 def main():
   np.set_printoptions(linewidth=400, precision=3, threshold=sys.maxsize, suppress=True)
@@ -42,6 +45,7 @@ def main():
   parser.add_argument('--seed', dest='seed', type=int)
   parser.add_argument('--write-clusters', action='store_true')
   parser.add_argument('--tree-type', choices=('monoprimary', 'polyprimary'))
+  parser.add_argument('--write-ssm-phi', action='store_true')
   parser.add_argument('-K', dest='K', type=int, default=4, help='Number of clusters')
   parser.add_argument('-S', dest='S', type=int, default=3, help='Number of samples')
   parser.add_argument('-T', dest='T', type=int, default=4000, help='Total reads per mutation')
@@ -71,7 +75,10 @@ def main():
     args.tree_type
   )
   data['seed'] = seed
-  write_data(data, args.datafn, args.paramsfn, args.ssmfn, args.write_clusters)
+
+  write_full_data(data, args.datafn)
+  write_params(data, args.paramsfn, args.write_clusters)
+  write_ssms(data, args.ssmfn, args.write_ssm_phi)
 
 if __name__ == '__main__':
   main()
