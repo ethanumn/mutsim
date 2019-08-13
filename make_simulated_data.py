@@ -26,7 +26,7 @@ def write_full_data(data, datafn):
   with open(datafn, 'wb') as outf:
     pickle.dump(data, outf)
 
-def write_params(data, paramsfn, should_write_clusters):
+def write_params(data, paramsfn, should_write_clusters, should_write_parents):
   with open(paramsfn, 'w') as outf:
     params = {
       'samples': data['sampnames'],
@@ -34,7 +34,14 @@ def write_params(data, paramsfn, should_write_clusters):
     if should_write_clusters:
       params['clusters'] = data['clusters']
       params['garbage'] = data['vids_garbage']
+    if should_write_parents:
+      params['parents'] = _find_parents(data['adjm']).tolist()
     json.dump(params, outf)
+
+def _find_parents(adj):
+  adj = np.copy(adj)
+  np.fill_diagonal(adj, 0)
+  return np.argmax(adj[:,1:], axis=0)
 
 def main():
   np.set_printoptions(linewidth=400, precision=3, threshold=sys.maxsize, suppress=True)
@@ -43,9 +50,10 @@ def main():
     formatter_class=argparse.ArgumentDefaultsHelpFormatter
   )
   parser.add_argument('--seed', dest='seed', type=int)
-  parser.add_argument('--write-clusters', action='store_true')
   parser.add_argument('--tree-type', choices=('monoprimary', 'polyprimary'))
+  parser.add_argument('--write-clusters', action='store_true')
   parser.add_argument('--write-ssm-phi', action='store_true')
+  parser.add_argument('--write-parents', action='store_true')
   parser.add_argument('-K', dest='K', type=int, default=4, help='Number of clusters')
   parser.add_argument('-S', dest='S', type=int, default=3, help='Number of samples')
   parser.add_argument('-T', dest='T', type=int, default=4000, help='Total reads per mutation')
@@ -77,7 +85,7 @@ def main():
   data['seed'] = seed
 
   write_full_data(data, args.datafn)
-  write_params(data, args.paramsfn, args.write_clusters)
+  write_params(data, args.paramsfn, args.write_clusters, args.write_parents)
   write_ssms(data, args.ssmfn, args.write_ssm_phi)
 
 if __name__ == '__main__':
