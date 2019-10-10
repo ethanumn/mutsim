@@ -36,13 +36,13 @@ def _make_adjm(parents):
   adjm[parents, range(1, K)] = 1
   return adjm
 
-def generate_tree(K, S, tree_type):
+def generate_tree(K, S, alpha, tree_type):
   parents = make_parents(K, tree_type)
   #leaves = np.flatnonzero(np.sum(adjm, axis=1) == 0)
   adjm = _make_adjm(parents)
   Z = common.make_ancestral_from_adj(adjm) # KXK
 
-  eta = np.random.dirichlet(alpha = K*[1e0], size = S).T # KxS
+  eta = np.random.dirichlet(alpha = K*[alpha], size=S).T # KxS
   # In general, we want etas on leaves to be more "peaked" -- that is, only a
   # few subclones come to dominate, so they should have large etas relative to
   # internal nodes. We accomplish this by using a smaller alpha for these.
@@ -191,7 +191,7 @@ def generate_cnas(K, C, segs, parents, prop_gains=0.8):
   assert np.all(alleles >= 0)
   return (cn_pops, cn_segs, cn_phases, cn_deltas, alleles)
 
-def generate_data(K, S, T, M, C, H, G, tree_type):
+def generate_data(K, S, T, M, C, H, G, alpha, tree_type):
   # K: number of clusters (excluding normal root)
   # S: number of samples
   # T: reads per mutation
@@ -199,7 +199,7 @@ def generate_data(K, S, T, M, C, H, G, tree_type):
   # C: total number of CNAs
   # H: number of genomic segments
   # G: number of (additional) garbage mutations
-  parents, phi = generate_tree(K + 1, S, tree_type)
+  parents, phi = generate_tree(K + 1, S, alpha, tree_type)
   # Add 1 to each mutation's assignment to account for normal root.
   ssmass = assign_ssms(K, M) # Mx1
   clusters = make_clusters(ssmass)

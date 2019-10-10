@@ -49,6 +49,7 @@ def main():
   parser.add_argument('--write-clusters', action='store_true')
   parser.add_argument('--write-ssm-phi', action='store_true')
   parser.add_argument('--write-structures', action='store_true')
+  parser.add_argument('--alpha', type=float, default=1., help='Alpha parameter used for sampling eta from Dirichlet')
   parser.add_argument('-K', dest='K', type=int, default=4, help='Number of clusters')
   parser.add_argument('-S', dest='S', type=int, default=3, help='Number of samples')
   parser.add_argument('-T', dest='T', type=int, default=4000, help='Total reads per mutation')
@@ -75,9 +76,11 @@ def main():
     args.C,
     args.H,
     args.G,
+    args.alpha,
     args.tree_type
   )
   data['seed'] = seed
+  data['args'] = dict(vars(args))
 
   write_full_data(data, args.truthfn)
   write_params(data, args.paramsfn, args.write_clusters, args.write_structures)
