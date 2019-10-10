@@ -22,11 +22,11 @@ def write_ssms(data, ssm_fn, write_ssm_phi):
       V['var_read_prob'] = V['omega_v']
       print(*[V[K] for K in fields], sep='\t', file=outf)
 
-def write_full_data(data, datafn):
-  with open(datafn, 'wb') as outf:
+def write_full_data(data, truthfn):
+  with open(truthfn, 'wb') as outf:
     pickle.dump(data, outf)
 
-def write_params(data, paramsfn, should_write_clusters, should_write_parents):
+def write_params(data, paramsfn, should_write_clusters, should_write_structures):
   with open(paramsfn, 'w') as outf:
     params = {
       'samples': data['sampnames'],
@@ -34,14 +34,9 @@ def write_params(data, paramsfn, should_write_clusters, should_write_parents):
     if should_write_clusters:
       params['clusters'] = data['clusters']
       params['garbage'] = data['vids_garbage']
-    if should_write_parents:
-      params['parents'] = _find_parents(data['adjm']).tolist()
+    if should_write_structures:
+      params['structures'] = [data['structure'].tolist()]
     json.dump(params, outf)
-
-def _find_parents(adj):
-  adj = np.copy(adj)
-  np.fill_diagonal(adj, 0)
-  return np.argmax(adj[:,1:], axis=0)
 
 def main():
   np.set_printoptions(linewidth=400, precision=3, threshold=sys.maxsize, suppress=True)
@@ -53,15 +48,15 @@ def main():
   parser.add_argument('--tree-type', choices=('monoprimary', 'polyprimary'))
   parser.add_argument('--write-clusters', action='store_true')
   parser.add_argument('--write-ssm-phi', action='store_true')
-  parser.add_argument('--write-parents', action='store_true')
+  parser.add_argument('--write-structures', action='store_true')
   parser.add_argument('-K', dest='K', type=int, default=4, help='Number of clusters')
   parser.add_argument('-S', dest='S', type=int, default=3, help='Number of samples')
   parser.add_argument('-T', dest='T', type=int, default=4000, help='Total reads per mutation')
   parser.add_argument('-M', dest='M', type=int, default=10, help='Number of non-garbage mutations')
-  parser.add_argument('-C', dest='C', type=int, default=50, help='Number of CN events')
-  parser.add_argument('-H', dest='H', type=int, default=30, help='Number of genomic segments')
-  parser.add_argument('-G', dest='G', type=int, default=4, help='Number of garbage mutations')
-  parser.add_argument('datafn')
+  parser.add_argument('-C', dest='C', type=int, default=0, help='Number of CN events')
+  parser.add_argument('-H', dest='H', type=int, default=0, help='Number of genomic segments')
+  parser.add_argument('-G', dest='G', type=int, default=0, help='Number of garbage mutations')
+  parser.add_argument('truthfn')
   parser.add_argument('paramsfn')
   parser.add_argument('ssmfn')
   args = parser.parse_args()
@@ -84,8 +79,8 @@ def main():
   )
   data['seed'] = seed
 
-  write_full_data(data, args.datafn)
-  write_params(data, args.paramsfn, args.write_clusters, args.write_parents)
+  write_full_data(data, args.truthfn)
+  write_params(data, args.paramsfn, args.write_clusters, args.write_structures)
   write_ssms(data, args.ssmfn, args.write_ssm_phi)
 
 if __name__ == '__main__':

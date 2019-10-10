@@ -2,7 +2,7 @@ import numpy as np
 from collections import defaultdict, OrderedDict
 import common
 
-def make_parents(K):
+def _make_parents(K):
   # Determine parents of nodes [1, 2, ..., K].
   parents = []
   # mu is the probability of extending the current branch.
@@ -15,10 +15,10 @@ def make_parents(K):
       parents.append(np.random.randint(0, idx + 1))
   return np.array(parents)
 
-def make_adjm(K, tree_type):
+def make_parents(K, tree_type):
   assert tree_type in (None, 'monoprimary', 'polyprimary')
   while True:
-    parents = make_parents(K)
+    parents = _make_parents(K)
     root_children = np.sum(parents == 0)
     if tree_type is None:
       break
@@ -28,14 +28,18 @@ def make_adjm(K, tree_type):
     elif tree_type == 'polyprimary' and root_children > 1:
       break
 
-  # Make adjacency matrix from parents vector.
+  return parents
+
+def _make_adjm(parents):
+  K = len(parents) + 1
   adjm = np.eye(K)
   adjm[parents, range(1, K)] = 1
   return adjm
 
 def generate_tree(K, S, tree_type):
-  adjm = make_adjm(K, tree_type) # KxK
+  parents = make_parents(K, tree_type)
   #leaves = np.flatnonzero(np.sum(adjm, axis=1) == 0)
+  adjm = _make_adjm(parents)
   Z = common.make_ancestral_from_adj(adjm) # KXK
 
   eta = np.random.dirichlet(alpha = K*[1e0], size = S).T # KxS
@@ -47,7 +51,7 @@ def generate_tree(K, S, tree_type):
 
   phi = np.dot(Z, eta) # KxS
   assert np.allclose(1, phi[0])
-  return (adjm, phi)
+  return (parents, phi)
 
 def generate_read_counts(phi, omega_v, T):
   M, S = phi.shape
@@ -133,13 +137,6 @@ def _create_cna_config(K, H, C, ploidy):
   cn_pops, cn_segs, cn_phases = combined
   return (cn_pops, cn_segs, cn_phases)
 
-def _find_parents(adjm, root):
-  adjm = np.copy(adjm)
-  np.fill_diagonal(adjm, 0)
-  assert np.all(adjm[:,root] == 0)
-  parents = np.argmax(adjm, axis=0)
-  return parents
-
 def _find_children(adjm):
   adjm = np.copy(adjm)
   np.fill_diagonal(adjm, 0)
@@ -150,11 +147,10 @@ def _find_children(adjm):
     adjl[pidx] = np.flatnonzero(adjm[pidx]).tolist()
   return adjl
 
-def generate_cnas(K, C, segs, adjm, prop_gains=0.8):
+def generate_cnas(K, C, segs, parents, prop_gains=0.8):
   ploidy = 2
   root = 0
   H = len(segs)
-  parents = _find_parents(adjm, root)
   children = _find_children(adjm)
 
   cn_pops, cn_segs, cn_phases = _create_cna_config(K, H, C, ploidy)
@@ -203,7 +199,7 @@ def generate_data(K, S, T, M, C, H, G, tree_type):
   # C: total number of CNAs
   # H: number of genomic segments
   # G: number of (additional) garbage mutations
-  adjm, phi = generate_tree(K + 1, S, tree_type)
+  parents, phi = generate_tree(K + 1, S, tree_type)
   # Add 1 to each mutation's assignment to account for normal root.
   ssmass = assign_ssms(K, M) # Mx1
   clusters = make_clusters(ssmass)
@@ -223,7 +219,7 @@ def generate_data(K, S, T, M, C, H, G, tree_type):
 
   return {
     'sampnames': ['Sample %s' % (sidx + 1) for sidx in range(S)],
-    'adjm': adjm,
+    'structure': parents,
     'phi': phi,
     'clusters': clusters,
     'variants': variants,
