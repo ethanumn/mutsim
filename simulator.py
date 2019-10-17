@@ -137,21 +137,10 @@ def _create_cna_config(K, H, C, ploidy):
   cn_pops, cn_segs, cn_phases = combined
   return (cn_pops, cn_segs, cn_phases)
 
-def _find_children(adjm):
-  adjm = np.copy(adjm)
-  np.fill_diagonal(adjm, 0)
-  adjl = {}
-  for pidx in range(len(adjm)):
-    # Convert to Python list so we don't get weird NumPy broadcasting
-    # behaviour.
-    adjl[pidx] = np.flatnonzero(adjm[pidx]).tolist()
-  return adjl
-
 def generate_cnas(K, C, segs, parents, prop_gains=0.8):
   ploidy = 2
   root = 0
   H = len(segs)
-  children = _find_children(adjm)
 
   cn_pops, cn_segs, cn_phases = _create_cna_config(K, H, C, ploidy)
   alleles = np.nan * np.ones((K+1, H, ploidy))
@@ -164,7 +153,11 @@ def generate_cnas(K, C, segs, parents, prop_gains=0.8):
   assert np.all(cn_deltas >= 1)
   cn_deltas[del_idxs] *= -1
 
-  stack = list(children[root])
+  # I can't use NaN in integer arrays, so use a silly value instead.
+  parents = np.insert(parents, 0, -9999)
+  _find_children = lambda P: np.flatnonzero(parents == P).tolist()
+
+  stack = _find_children(root)
   while len(stack) > 0:
     pop = stack.pop()
     pop_cna = np.flatnonzero(cn_pops == pop)
@@ -185,7 +178,7 @@ def generate_cnas(K, C, segs, parents, prop_gains=0.8):
         cn_deltas[cna] = np.maximum(cn_deltas[cna], -parent_cn)
       alleles[pop, cn_segs[cna], cn_phases[cna]] = parent_cn + cn_deltas[cna]
 
-    stack += children[pop]
+    stack += _find_children(pop)
 
   assert not np.any(np.isnan(alleles))
   assert np.all(alleles >= 0)
@@ -209,7 +202,7 @@ def generate_data(K, S, T, M, C, H, G, alpha, tree_type):
   phi_mutations = np.vstack((phi_good_mutations, phi_garbage))
 
   segs = segment_genome(H)
-  #cn_pops, cn_segs, cn_phases, cn_deltas, alleles = generate_cnas(K, C, segs, adjm)
+  cn_pops, cn_segs, cn_phases, cn_deltas, alleles = generate_cnas(K, C, segs, parents)
 
   omega_v = np.broadcast_to(0.5, (M + G, S))
   variants = make_variants(phi_mutations, T, omega_v)
@@ -226,9 +219,9 @@ def generate_data(K, S, T, M, C, H, G, alpha, tree_type):
     'vids_good': vids_good,
     'vids_garbage': vids_garbage,
     'segments': segs,
-    #'cn_pops': cn_pops,
-    #'cn_segs': cn_segs,
-    #'cn_phases': cn_phases,
-    #'cn_deltas': cn_deltas,
-    #'alleles': alleles,
+    'cn_pops': cn_pops,
+    'cn_segs': cn_segs,
+    'cn_phases': cn_phases,
+    'cn_deltas': cn_deltas,
+    'alleles': alleles,
   }
