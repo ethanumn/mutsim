@@ -1,13 +1,15 @@
 import numpy as np
-from collections import defaultdict, OrderedDict
+from collections import defaultdict, OrderedDict, namedtuple
 import common
+
+Cna = namedtuple('Cna', ('seg', 'phase', 'delta'))
 
 def _make_parents(K):
   # Determine parents of nodes [1, 2, ..., K].
   parents = []
   # mu is the probability of extending the current branch.
   mu = 0.75
-  for idx in range(K - 1):
+  for idx in range(K):
     U = np.random.uniform()
     if U < mu:
       parents.append(len(parents))
@@ -40,16 +42,16 @@ def generate_tree(K, S, alpha, tree_type):
   parents = make_parents(K, tree_type)
   #leaves = np.flatnonzero(np.sum(adjm, axis=1) == 0)
   adjm = _make_adjm(parents)
-  Z = common.make_ancestral_from_adj(adjm) # KXK
+  Z = common.make_ancestral_from_adj(adjm) # (K+1)x(K+1)
 
-  eta = np.random.dirichlet(alpha = K*[alpha], size=S).T # KxS
+  eta = np.random.dirichlet(alpha = (K+1)*[alpha], size=S).T # (K+1)xS
   # In general, we want etas on leaves to be more "peaked" -- that is, only a
   # few subclones come to dominate, so they should have large etas relative to
   # internal nodes. We accomplish this by using a smaller alpha for these.
   #eta[leaves] += np.random.dirichlet(alpha = len(leaves)*[1e0], size = S).T
   eta /= np.sum(eta, axis=0)
 
-  phi = np.dot(Z, eta) # KxS
+  phi = np.dot(Z, eta) # (Kx1)xS
   assert np.allclose(1, phi[0])
   return (parents, phi)
 
@@ -65,10 +67,6 @@ def add_noise(mat, sigma=0.09):
   noisy = np.random.normal(loc=mat, scale=sigma)
   capped = np.maximum(0, np.minimum(1, noisy))
   return capped
-
-def choose_categories(C, alpha, size=None):
-  P = np.random.dirichlet(alpha = C*[alpha])
-  return np.random.choice(C, p=P, size=size)
 
 def assign_ssms(K, M):
   # Ensure every cluster has at least one mutation.
@@ -109,80 +107,109 @@ def make_variants(phi_mutations, T, omega_v):
   return variants
 
 def segment_genome(H, alpha=5):
-  masses = np.random.dirichlet(alpha = H*[alpha])
-  return masses
+  segs = np.random.dirichlet(alpha = H*[5])
+  return segs
 
-def _create_cna_config(K, H, C, ploidy):
-  cn_pop_probs = np.random.dirichlet(alpha = K*[5])
+def _generate_cna_events(K, H, C, ploidy, struct):
+  assert len(struct) == K
+  adjm = _make_adjm(struct)
+  anc = common.make_ancestral_from_adj(adjm)
+
   cn_seg_probs = np.random.dirichlet(alpha = H*[5])
   cn_phase_probs = np.random.dirichlet(alpha = ploidy*[5])
+  cn_pop_probs = np.random.dirichlet(alpha = K*[5])
+  # Directions: 0=deletion, 1=gain
+  direction_probs = np.random.dirichlet(alpha = 2*[5])
+  lam = 1.5
 
   attempts = 0
   max_attempts = 5000*C
-  events = set()
 
-  while len(events) < C:
+  triplets = set()
+  events = {}
+  directions = {}
+  deletions = {}
+  num_events = 0
+
+  while num_events < C:
     attempts += 1
     if attempts > max_attempts:
       raise Exception('Could not generate configuration without duplicates in %s attempts' % max_attempts)
-    # Add one so that no CNAs are assigned to the root.
-    cn_pop = np.random.choice(K, p=cn_pop_probs) + 1
+
     cn_seg = np.random.choice(H, p=cn_seg_probs)
     cn_phase = np.random.choice(ploidy, p=cn_phase_probs)
-    triplet = (cn_pop, cn_seg, cn_phase)
-    if triplet not in events:
-      events.add(triplet)
+    # Add one so that no CNAs are assigned to the root.
+    cn_pop = np.random.choice(K, p=cn_pop_probs) + 1
+    triplet = (cn_seg, cn_phase, cn_pop)
+    doublet = (cn_seg, cn_phase)
 
-  combined = np.array(list(events)).T
-  cn_pops, cn_segs, cn_phases = combined
-  return (cn_pops, cn_segs, cn_phases)
+    if triplet in triplets:
+      continue
 
-def generate_cnas(K, C, segs, parents, prop_gains=0.8):
-  ploidy = 2
+    if doublet in directions:
+      direction = directions[doublet]
+    else:
+      direction = np.random.choice(2, p=direction_probs)
+
+    if direction == 1:
+      delta = np.ceil(np.random.exponential(scale=1/lam)).astype(np.int)
+      assert delta >= 1
+    else:
+      # We only ever have one allele to lose, so can never lose more than one.
+      delta = -1
+      if doublet in deletions:
+        same_branch_nodes = set(np.flatnonzero(anc[cn_pop])) | set(np.flatnonzero(anc[:,cn_pop]))
+        same_branch_deletions = deletions[doublet] & same_branch_nodes
+        if len(same_branch_deletions) > 0:
+          continue
+      else:
+        deletions[doublet] = set()
+      deletions[doublet].add(cn_pop)
+
+    triplets.add(triplet)
+    if doublet not in directions:
+      directions[doublet] = direction
+    if cn_pop not in events:
+      events[cn_pop] = set()
+    events[cn_pop].add(Cna(cn_seg, cn_phase, delta))
+    num_events += 1
+
+  assert 0 not in events
+  return events
+
+def _compute_allele_counts(struct, cna_events, H, ploidy):
+  K = len(struct)
   root = 0
-  H = len(segs)
-
-  cn_pops, cn_segs, cn_phases = _create_cna_config(K, H, C, ploidy)
   alleles = np.nan * np.ones((K+1, H, ploidy))
   alleles[root,:,:] = 1
 
-  del_idxs = np.random.uniform(size=C) >= prop_gains
-  # Take deltas in integer range [1, 2, ...].
-  lam = 1.5
-  cn_deltas = np.ceil(np.random.exponential(scale=1/lam, size=C))
-  assert np.all(cn_deltas >= 1)
-  cn_deltas[del_idxs] *= -1
-
   # I can't use NaN in integer arrays, so use a silly value instead.
-  parents = np.insert(parents, 0, -9999)
-  _find_children = lambda P: np.flatnonzero(parents == P).tolist()
+  parents = np.insert(struct, 0, -9999)
 
+  _find_children = lambda P: np.flatnonzero(parents == P).tolist()
   stack = _find_children(root)
   while len(stack) > 0:
     pop = stack.pop()
-    pop_cna = np.flatnonzero(cn_pops == pop)
     parent = parents[pop]
     alleles[pop] = alleles[parent]
-
-    for cna in pop_cna:
-      parent_cn = alleles[parent, cn_segs[cna], cn_phases[cna]]
-      assert parent_cn >= 0
-
-      # Once an allele disappears, don't permit it to return.
-      if parent_cn == 0:
-        # Note that the only instance in which cn_deltas can be zero is when a
-        # parent in the tree has already dropped this segment's CN to zero.
-        cn_deltas[cna] = 0
-      # Never let CN drop below zero.
-      if cn_deltas[cna] < 0:
-        cn_deltas[cna] = np.maximum(cn_deltas[cna], -parent_cn)
-      alleles[pop, cn_segs[cna], cn_phases[cna]] = parent_cn + cn_deltas[cna]
-
+    for event in cna_events.get(pop, []):
+      assert event.delta != 0
+      parent_cn = alleles[parent, event.seg, event.phase]
+      alleles[pop, event.seg, event.phase] = parent_cn + event.delta
     stack += _find_children(pop)
 
   assert not np.any(np.isnan(alleles))
   assert np.all(alleles >= 0)
-  return (cn_pops, cn_segs, cn_phases, cn_deltas, alleles)
+  return alleles
+
+def generate_cnas(K, C, segs, struct):
+  ploidy = 2
+  H = len(segs)
+  cna_events = _generate_cna_events(K, H, C, ploidy, struct)
+  alleles = _compute_allele_counts(struct, cna_events, H, ploidy)
+  print(cna_events)
+  print(alleles)
+  return (cna_events, alleles)
 
 def generate_data(K, S, T, M, C, H, G, alpha, tree_type):
   # K: number of clusters (excluding normal root)
@@ -192,8 +219,7 @@ def generate_data(K, S, T, M, C, H, G, alpha, tree_type):
   # C: total number of CNAs
   # H: number of genomic segments
   # G: number of (additional) garbage mutations
-  parents, phi = generate_tree(K + 1, S, alpha, tree_type)
-  # Add 1 to each mutation's assignment to account for normal root.
+  struct, phi = generate_tree(K, S, alpha, tree_type)
   ssmass = assign_ssms(K, M) # Mx1
   clusters = make_clusters(ssmass)
 
@@ -202,7 +228,7 @@ def generate_data(K, S, T, M, C, H, G, alpha, tree_type):
   phi_mutations = np.vstack((phi_good_mutations, phi_garbage))
 
   segs = segment_genome(H)
-  cn_pops, cn_segs, cn_phases, cn_deltas, alleles = generate_cnas(K, C, segs, parents)
+  cna_events, alleles = generate_cnas(K, C, segs, struct)
 
   omega_v = np.broadcast_to(0.5, (M + G, S))
   variants = make_variants(phi_mutations, T, omega_v)
@@ -212,16 +238,13 @@ def generate_data(K, S, T, M, C, H, G, alpha, tree_type):
 
   return {
     'sampnames': ['Sample %s' % (sidx + 1) for sidx in range(S)],
-    'structure': parents,
+    'structure': struct,
     'phi': phi,
     'clusters': clusters,
     'variants': variants,
     'vids_good': vids_good,
     'vids_garbage': vids_garbage,
     'segments': segs,
-    'cn_pops': cn_pops,
-    'cn_segs': cn_segs,
-    'cn_phases': cn_phases,
-    'cn_deltas': cn_deltas,
+    'cna_events': cna_events,
     'alleles': alleles,
   }
