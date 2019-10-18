@@ -55,7 +55,7 @@ def main():
   parser.add_argument('-T', dest='T', type=int, default=4000, help='Total reads per mutation')
   parser.add_argument('-M', dest='M', type=int, default=10, help='Number of non-garbage mutations')
   parser.add_argument('-C', dest='C', type=int, default=0, help='Number of CN events')
-  parser.add_argument('-H', dest='H', type=int, default=0, help='Number of genomic segments')
+  parser.add_argument('-H', dest='H', type=int, default=1, help='Number of genomic segments')
   parser.add_argument('-G', dest='G', type=int, default=0, help='Number of garbage mutations')
   parser.add_argument('truthfn')
   parser.add_argument('paramsfn')

@@ -53,7 +53,7 @@ def generate_tree(K, S, alpha, tree_type):
 
   phi = np.dot(Z, eta) # (Kx1)xS
   assert np.allclose(1, phi[0])
-  return (parents, phi)
+  return (parents, phi, eta)
 
 def generate_read_counts(phi, omega_v, T):
   M, S = phi.shape
@@ -207,6 +207,7 @@ def generate_cnas(K, C, segs, struct):
   H = len(segs)
   cna_events = _generate_cna_events(K, H, C, ploidy, struct)
   alleles = _compute_allele_counts(struct, cna_events, H, ploidy)
+  print(segs)
   print(cna_events)
   print(alleles)
   return (cna_events, alleles)
@@ -219,7 +220,7 @@ def generate_data(K, S, T, M, C, H, G, alpha, tree_type):
   # C: total number of CNAs
   # H: number of genomic segments
   # G: number of (additional) garbage mutations
-  struct, phi = generate_tree(K, S, alpha, tree_type)
+  struct, phi, eta = generate_tree(K, S, alpha, tree_type)
   ssmass = assign_ssms(K, M) # Mx1
   clusters = make_clusters(ssmass)
 
@@ -240,6 +241,7 @@ def generate_data(K, S, T, M, C, H, G, alpha, tree_type):
     'sampnames': ['Sample %s' % (sidx + 1) for sidx in range(S)],
     'structure': struct,
     'phi': phi,
+    'eta': eta,
     'clusters': clusters,
     'variants': variants,
     'vids_good': vids_good,
