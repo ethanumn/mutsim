@@ -39,6 +39,9 @@ def write_params(data, paramsfn, should_write_clusters, should_write_structures)
       params['structures'] = [data['structure'].tolist()]
     json.dump(params, outf)
 
+def write_numpy(data, numpy_fn):
+  np.savez_compressed(numpy_fn, **simulator.convert_to_numpy_array(data))
+
 def main():
   np.set_printoptions(linewidth=400, precision=3, threshold=sys.maxsize, suppress=True)
   parser = argparse.ArgumentParser(
@@ -50,6 +53,7 @@ def main():
   parser.add_argument('--write-clusters', action='store_true')
   parser.add_argument('--write-ssm-phi', action='store_true')
   parser.add_argument('--write-structures', action='store_true')
+  parser.add_argument('--write-numpy', dest='numpy_fn')
   parser.add_argument('--alpha', type=float, default=1., help='Alpha parameter used for sampling eta from Dirichlet')
   parser.add_argument('-K', dest='K', type=int, default=4, help='Number of clusters')
   parser.add_argument('-S', dest='S', type=int, default=3, help='Number of samples')
@@ -86,6 +90,8 @@ def main():
   write_full_data(data, args.truthfn)
   write_params(data, args.paramsfn, args.write_clusters, args.write_structures)
   write_ssms(data, args.ssmfn, args.write_ssm_phi)
+  if args.numpy_fn is not None:
+    write_numpy(data, args.numpy_fn)
 
 if __name__ == '__main__':
   main()

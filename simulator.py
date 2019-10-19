@@ -211,15 +211,17 @@ def generate_cnas(K, C, segs, struct, ploidy):
   alleles = _compute_allele_counts(struct, cna_events, H, ploidy)
   return (cna_events, alleles)
 
-def _compute_cna_influence(struct, cna_events, ssm_segs, ssm_pops, ssm_phase, ssm_timing):
-  assert len(ssm_segs) == len(ssm_pops) == len(ssm_phase) == len(ssm_timing)
+def _compute_cna_influence(struct, cna_events, ssm_segs, ssm_pops, ssm_phases, ssm_timing):
+  assert len(ssm_segs) == len(ssm_pops) == len(ssm_phases) == len(ssm_timing)
   M = len(ssm_segs)
   C = len(cna_events)
 
-  # `influence[i,j] = 1` iff SSM `i` is influenced by CNA `j`. That is, SSM `i`
-  # occurred on the same phase as CNA `j` in an ancestral population to where
-  # `j` occurred, or `i` occurred in the same population as `j` with timing
-  # such that `i` was before (not after) `j`.
+  # For `cna_influence`, we have an `MxC` matrix, where `cna_influence[i,j] =
+  # 1` iff SSM `i` is influenced by CNA `j`. That is, SSM `i` occurred in the
+  # same phase on the same segment as CNA `j` in an ancestral population to
+  # where `j` occurred, or `i` occurred in the same phase on the same segment
+  # as `j`  in the same population with timing such that `i` was before (not
+  # after) `j`.
   infl = np.zeros((M, C), dtype=np.int8)
   adjm = _make_adjm(struct)
   anc = common.make_ancestral_from_adj(adjm)
@@ -231,7 +233,7 @@ def _compute_cna_influence(struct, cna_events, ssm_segs, ssm_pops, ssm_phase, ss
     ancestral_ssm_mask = np.logical_and.reduce((
       np.isin(ssm_pops, anc_pops),
       ssm_segs == event.seg,
-      ssm_phase == event.phase,
+      ssm_phases == event.phase,
     ))
     before_cna_ssm_mask = np.logical_and(
       ssm_pops == event.pop,
@@ -248,7 +250,7 @@ def generate_ssms(K, M, G, S, T, segs, ploidy, phi):
   ssm_segs = assign_ssms_to_segs(M, segs)
 
   phase_probs = np.random.dirichlet(alpha = ploidy*[5])
-  ssm_phase = np.random.choice(ploidy, p=phase_probs, size=M)
+  ssm_phases = np.random.choice(ploidy, p=phase_probs, size=M)
   timing_probs = np.random.dirichlet(alpha = 2*[5])
   ssm_timing = np.random.choice(2, p=timing_probs, size=M)
 
@@ -269,9 +271,30 @@ def generate_ssms(K, M, G, S, T, segs, ploidy, phi):
     clusters,
     ssm_pops,
     ssm_segs,
-    ssm_phase,
+    ssm_phases,
     ssm_timing,
   )
+
+def convert_to_numpy_array(data):
+  arrays = {K: data[K] for K in (
+    'structure',
+    'segments',
+    'phi',
+    'eta',
+    'ssm_pops',
+    'ssm_segs',
+    'ssm_phases',
+    'ssm_timing',
+    'cna_influence',
+    'alleles',
+    'seed',
+  )}
+
+  def _extract_attr(C, key):
+    return np.array([getattr(c, key) for c in C])
+  for key in ('pop', 'seg', 'phase', 'delta'):
+    arrays['cna_%ss' % key] = _extract_attr(data['cna_events'], key)
+  return arrays
 
 def generate_data(K, S, T, M, C, H, G, alpha, tree_type):
   # K: number of clusters (excluding normal root)
@@ -292,20 +315,27 @@ def generate_data(K, S, T, M, C, H, G, alpha, tree_type):
     clusters, \
     ssm_pops, \
     ssm_segs, \
-    ssm_phase, \
+    ssm_phases, \
     ssm_timing = generate_ssms(K, M, G, S, T, segs, ploidy, phi)
-  cna_influence = _compute_cna_influence(struct, cna_events, ssm_segs, ssm_pops, ssm_phase, ssm_timing)
+  cna_influence = _compute_cna_influence(struct, cna_events, ssm_segs, ssm_pops, ssm_phases, ssm_timing)
 
   return {
     'sampnames': ['Sample %s' % (sidx + 1) for sidx in range(S)],
     'structure': struct,
+    'segments': segs,
     'phi': phi,
     'eta': eta,
+    # TODO: remove clusters, since `ssm_pops` represents the same information
+    # in a way more consistent with other variables (like `ssm_segs` and
+    # `ssm_phases`)?
     'clusters': clusters,
     'variants': variants,
     'vids_good': vids_good,
     'vids_garbage': vids_garbage,
-    'segments': segs,
+    'ssm_pops': ssm_pops,
+    'ssm_segs': ssm_segs,
+    'ssm_phases': ssm_phases,
+    'ssm_timing': ssm_timing,
     'cna_events': cna_events,
     'cna_influence': cna_influence,
     'alleles': alleles,
