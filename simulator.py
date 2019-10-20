@@ -244,7 +244,7 @@ def _compute_cna_influence(struct, cna_events, ssm_segs, ssm_pops, ssm_phases, s
 
   return infl
 
-def generate_ssms(K, M, G, S, T, segs, ploidy, phi):
+def generate_ssms(K, M, G, S, T, segs, ploidy, phi, cna_events):
   ssm_pops = assign_ssms_to_pops(M, K) # Mx1
   clusters = make_clusters(ssm_pops)
   ssm_segs = assign_ssms_to_segs(M, segs)
@@ -252,7 +252,14 @@ def generate_ssms(K, M, G, S, T, segs, ploidy, phi):
   phase_probs = np.random.dirichlet(alpha = ploidy*[5])
   ssm_phases = np.random.choice(ploidy, p=phase_probs, size=M)
   timing_probs = np.random.dirichlet(alpha = 2*[5])
+
   ssm_timing = np.random.choice(2, p=timing_probs, size=M)
+  all_pops = set(range(1, K+1))
+  assert set(ssm_pops) == all_pops
+  cna_gain_pops = set([C.pop for C in cna_events if C.delta > 0])
+  no_gain_pops = np.array(list(all_pops - cna_gain_pops))
+  no_gain_ssms = np.isin(ssm_pops, no_gain_pops)
+  ssm_timing[no_gain_ssms] = -1
 
   phi_good_mutations = np.array([phi[cidx] for cidx in ssm_pops]) # MxS
   phi_garbage = np.random.uniform(size=(G,S))
@@ -276,7 +283,7 @@ def generate_ssms(K, M, G, S, T, segs, ploidy, phi):
   )
 
 def convert_to_numpy_array(data):
-  arrays = {K: data[K] for K in (
+  arrays = {K: np.array(data[K]) for K in (
     'structure',
     'segments',
     'phi',
@@ -316,7 +323,7 @@ def generate_data(K, S, T, M, C, H, G, alpha, tree_type):
     ssm_pops, \
     ssm_segs, \
     ssm_phases, \
-    ssm_timing = generate_ssms(K, M, G, S, T, segs, ploidy, phi)
+    ssm_timing = generate_ssms(K, M, G, S, T, segs, ploidy, phi, cna_events)
   cna_influence = _compute_cna_influence(struct, cna_events, ssm_segs, ssm_pops, ssm_phases, ssm_timing)
 
   return {

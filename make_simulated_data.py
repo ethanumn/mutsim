@@ -40,7 +40,8 @@ def write_params(data, paramsfn, should_write_clusters, should_write_structures)
     json.dump(params, outf)
 
 def write_numpy(data, numpy_fn):
-  np.savez_compressed(numpy_fn, **simulator.convert_to_numpy_array(data))
+  arrs = simulator.convert_to_numpy_array(data)
+  np.savez_compressed(numpy_fn, **arrs)
 
 def main():
   np.set_printoptions(linewidth=400, precision=3, threshold=sys.maxsize, suppress=True)
