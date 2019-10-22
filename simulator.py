@@ -5,6 +5,8 @@ import common
 Cna = namedtuple('Cna', ('pop', 'seg', 'phase', 'delta'))
 TIMING_BEFORE = 0
 TIMING_AFTER = 1
+DIRECTION_GAIN = 1
+DIRECTION_LOSS = 0
 
 def _make_parents(K):
   # Determine parents of nodes [1, 2, ..., K].
@@ -156,7 +158,7 @@ def _generate_cna_events(K, H, C, ploidy, struct):
     else:
       direction = np.random.choice(2, p=direction_probs)
 
-    if direction == 1:
+    if direction == DIRECTION_GAIN:
       delta = np.ceil(np.random.exponential(scale=1/lam)).astype(np.int)
       assert delta >= 1
     else:
@@ -244,16 +246,32 @@ def _compute_cna_influence(struct, cna_events, ssm_segs, ssm_pops, ssm_phases, s
 
   return infl
 
-def generate_ssms(K, M, G, S, T, segs, ploidy, phi, cna_events):
+def generate_ssms(K, M, G, S, T, segs, ploidy, phi, cna_events, alleles):
+  # We ensure that every population has at least one SSM.
   ssm_pops = assign_ssms_to_pops(M, K) # Mx1
   clusters = make_clusters(ssm_pops)
-  ssm_segs = assign_ssms_to_segs(M, segs)
 
   phase_probs = np.random.dirichlet(alpha = ploidy*[5])
-  ssm_phases = np.random.choice(ploidy, p=phase_probs, size=M)
-  timing_probs = np.random.dirichlet(alpha = 2*[5])
+  ssm_segs = []
+  ssm_phases = []
 
-  ssm_timing = np.random.choice(2, p=timing_probs, size=M)
+  while len(ssm_segs) < M:
+    # This could end up being an infinite loop -- we could have decided to
+    # assign the SSM to a population where every segment in every phase is
+    # deleted. Hopefully this won't ever happen, so I don't explicitly check
+    # for it, but if a process is running forever, I should check this.
+    ssmidx = len(ssm_segs)
+    pop = ssm_pops[ssmidx]
+
+    seg = np.random.choice(len(segs), p=segs)
+    phase = np.random.choice(len(phase_probs), p=phase_probs)
+    if alleles[pop,seg,phase] == 0:
+      continue
+    ssm_segs.append(seg)
+    ssm_phases.append(phase)
+
+  timing_probs = np.random.dirichlet(alpha = 2*[5])
+  ssm_timing = np.random.choice(len(timing_probs), p=timing_probs, size=M)
   all_pops = set(range(1, K+1))
   assert set(ssm_pops) == all_pops
   cna_gain_pops = set([C.pop for C in cna_events if C.delta > 0])
@@ -277,8 +295,8 @@ def generate_ssms(K, M, G, S, T, segs, ploidy, phi, cna_events):
     vids_garbage,
     clusters,
     ssm_pops,
-    ssm_segs,
-    ssm_phases,
+    np.array(ssm_segs),
+    np.array(ssm_phases),
     ssm_timing,
   )
 
@@ -323,7 +341,7 @@ def generate_data(K, S, T, M, C, H, G, alpha, tree_type):
     ssm_pops, \
     ssm_segs, \
     ssm_phases, \
-    ssm_timing = generate_ssms(K, M, G, S, T, segs, ploidy, phi, cna_events)
+    ssm_timing = generate_ssms(K, M, G, S, T, segs, ploidy, phi, cna_events, alleles)
   cna_influence = _compute_cna_influence(struct, cna_events, ssm_segs, ssm_pops, ssm_phases, ssm_timing)
 
   return {
