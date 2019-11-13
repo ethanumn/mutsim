@@ -9,7 +9,7 @@ PARALLEL=40
 function make_simulated_data {
   mkdir -p $INDIR
 
-  for K in 3 10; do
+  for K in 3 10 30 100; do
   for S in 1 3 10 30 100; do
   for T in 50 200 1000; do
   for M_per_cluster in 10 20 100; do
@@ -22,12 +22,13 @@ function make_simulated_data {
     (
       echo "python3 $PROTDIR/make_simulated_data.py" \
         "--write-clusters" \
+        "--write-numpy $INDIR/$jobname.truth.npz" \
         "-K $K" \
         "-S $S" \
         "-T $T" \
         "-M $M" \
         "-G $G" \
-        "$INDIR/$jobname.data.pickle" \
+        "$INDIR/$jobname.truth.pickle" \
         "$INDIR/$jobname.params.json" \
         "$INDIR/$jobname.ssm" \
         "> $INDIR/$jobname.stdout" \

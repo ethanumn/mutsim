@@ -42,19 +42,27 @@ def _make_adjm(parents):
   adjm[parents, range(1, K)] = 1
   return adjm
 
-def generate_tree(K, S, alpha, tree_type):
+def generate_tree(K, S, alpha, tree_type, eta_min=1e-30):
   parents = make_parents(K, tree_type)
   #leaves = np.flatnonzero(np.sum(adjm, axis=1) == 0)
   adjm = _make_adjm(parents)
   Z = common.make_ancestral_from_adj(adjm) # (K+1)x(K+1)
-
   eta = np.random.dirichlet(alpha = (K+1)*[alpha], size=S).T # (K+1)xS
+
   # In general, we want etas on leaves to be more "peaked" -- that is, only a
   # few subclones come to dominate, so they should have large etas relative to
   # internal nodes. We accomplish this by using a smaller alpha for these.
   #eta[leaves] += np.random.dirichlet(alpha = len(leaves)*[1e0], size = S).T
-  eta /= np.sum(eta, axis=0)
 
+  # Given the true phis, we want enumeration to be able to recover the true
+  # tree (as well as other trees, potentially). For this to work, there needs
+  # to be a well-defined ordering based on phis, which means that we can't have
+  # `eta = 0` exactly. Without this minimum eta, especially given only one
+  # sample, we can end up with two populations that have exactly the same phi,
+  # which means their ordering is arbitrary.
+  eta = np.maximum(eta_min, eta)
+
+  eta /= np.sum(eta, axis=0)
   phi = np.dot(Z, eta) # (Kx1)xS
   assert np.allclose(1, phi[0])
   return (parents, phi, eta)
