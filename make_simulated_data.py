@@ -23,20 +23,24 @@ def write_ssms(data, ssm_fn, write_ssm_phi):
       V['var_read_prob'] = V['omega_v']
       print(*[V[K] for K in fields], sep='\t', file=outf)
 
-def write_full_data(data, truthfn):
+def write_full_data(simdata, simparams, truthfn):
+  # Don't modify original dict.
+  combined = dict(simdata)
+  combined['simparams'] = simparams
   with open(truthfn, 'wb') as outf:
-    pickle.dump(data, outf)
+    pickle.dump(combined, outf)
 
-def write_params(data, paramsfn, should_write_clusters, should_write_structures):
+def write_params(simdata, simparams, paramsfn, should_write_clusters, should_write_structures):
   with open(paramsfn, 'w') as outf:
     params = {
-      'samples': data['sampnames'],
+      'samples': simdata['sampnames'],
+      'garbage': simdata['vids_garbage'],
+      'simparams': simparams,
     }
     if should_write_clusters:
-      params['clusters'] = data['clusters']
-      params['garbage'] = data['vids_garbage']
+      params['clusters'] = simdata['clusters']
     if should_write_structures:
-      params['structures'] = [data['structure'].tolist()]
+      params['structures'] = [simdata['structure'].tolist()]
     json.dump(params, outf)
 
 def write_numpy(data, numpy_fn):
@@ -63,6 +67,7 @@ def main():
   parser.add_argument('-C', dest='C', type=int, default=0, help='Number of CN events')
   parser.add_argument('-H', dest='H', type=int, default=1, help='Number of genomic segments')
   parser.add_argument('-G', dest='G', type=int, default=0, help='Number of garbage mutations')
+  parser.add_argument('--garbage-type', choices=('acquired_twice', 'wildtype_backmut', 'uniform', 'missed_cna'), default='uniform')
   parser.add_argument('truthfn')
   parser.add_argument('paramsfn')
   parser.add_argument('ssmfn')
@@ -74,7 +79,7 @@ def main():
     seed = args.seed
   np.random.seed(args.seed)
 
-  data = simulator.generate_data(
+  simdata, simparams = simulator.generate_data(
     args.K,
     args.S,
     args.T,
@@ -82,17 +87,18 @@ def main():
     args.C,
     args.H,
     args.G,
+    args.garbage_type,
     args.alpha,
     args.tree_type
   )
-  data['seed'] = seed
-  data['args'] = dict(vars(args))
+  simdata['seed'] = seed
+  simdata['args'] = dict(vars(args))
 
-  write_full_data(data, args.truthfn)
-  write_params(data, args.paramsfn, args.write_clusters, args.write_structures)
-  write_ssms(data, args.ssmfn, args.write_ssm_phi)
+  write_full_data(simdata, simparams,args.truthfn)
+  write_params(simdata, simparams, args.paramsfn, args.write_clusters, args.write_structures)
+  write_ssms(simdata, args.ssmfn, args.write_ssm_phi)
   if args.numpy_fn is not None:
-    write_numpy(data, args.numpy_fn)
+    write_numpy(simdata, args.numpy_fn)
 
 if __name__ == '__main__':
   main()

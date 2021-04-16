@@ -1,6 +1,11 @@
 import numpy as np
 from collections import defaultdict, OrderedDict, namedtuple
-import common
+import garbage
+
+import sys
+import os
+sys.path.append(os.path.expanduser('~/work/pairtree/lib'))
+import util
 
 Cna = namedtuple('Cna', ('pop', 'seg', 'phase', 'delta'))
 TIMING_BEFORE = 0
@@ -36,17 +41,11 @@ def make_parents(K, tree_type):
 
   return parents
 
-def _make_adjm(parents):
-  K = len(parents) + 1
-  adjm = np.eye(K)
-  adjm[parents, range(1, K)] = 1
-  return adjm
-
 def generate_tree(K, S, alpha, tree_type, eta_min=1e-30):
   parents = make_parents(K, tree_type)
   #leaves = np.flatnonzero(np.sum(adjm, axis=1) == 0)
-  adjm = _make_adjm(parents)
-  Z = common.make_ancestral_from_adj(adjm) # (K+1)x(K+1)
+  adjm = util.convert_parents_to_adjmatrix(parents)
+  Z = util.make_ancestral_from_adj(adjm) # (K+1)x(K+1)
   eta = np.random.dirichlet(alpha = (K+1)*[alpha], size=S).T # (K+1)xS
 
   # In general, we want etas on leaves to be more "peaked" -- that is, only a
@@ -128,8 +127,8 @@ def segment_genome(H, alpha=5):
 
 def _generate_cna_events(K, H, C, ploidy, struct):
   assert len(struct) == K
-  adjm = _make_adjm(struct)
-  anc = common.make_ancestral_from_adj(adjm)
+  adjm = util.convert_parents_to_adjmatrix(struct)
+  anc = util.make_ancestral_from_adj(adjm)
 
   cn_seg_probs = np.random.dirichlet(alpha = H*[5])
   cn_phase_probs = np.random.dirichlet(alpha = ploidy*[5])
@@ -233,8 +232,8 @@ def _compute_cna_influence(struct, cna_events, ssm_segs, ssm_pops, ssm_phases, s
   # as `j`  in the same population with timing such that `i` was before (not
   # after) `j`.
   infl = np.zeros((M, C), dtype=np.int8)
-  adjm = _make_adjm(struct)
-  anc = common.make_ancestral_from_adj(adjm)
+  adjm = util.convert_parents_to_adjmatrix(struct)
+  anc = util.make_ancestral_from_adj(adjm)
   np.fill_diagonal(anc, 0)
 
   for cna_idx, event in enumerate(cna_events):
@@ -254,7 +253,7 @@ def _compute_cna_influence(struct, cna_events, ssm_segs, ssm_pops, ssm_phases, s
 
   return infl
 
-def generate_ssms(K, M, G, S, T, segs, ploidy, phi, cna_events, alleles):
+def generate_ssms(K, M, S, T, G, garbage_type, segs, ploidy, struct, phi, cna_events, alleles):
   # We ensure that every population has at least one SSM.
   ssm_pops = assign_ssms_to_pops(M, K) # Mx1
   clusters = make_clusters(ssm_pops)
@@ -288,11 +287,12 @@ def generate_ssms(K, M, G, S, T, segs, ploidy, phi, cna_events, alleles):
   ssm_timing[no_gain_ssms] = -1
 
   phi_good_mutations = np.array([phi[cidx] for cidx in ssm_pops]) # MxS
-  phi_garbage = np.random.uniform(size=(G,S))
+  omega_good = np.broadcast_to(0.5, (M, S))
+  phi_garbage, omega_garb_true, omega_garb_observed = garbage.generate(G, garbage_type, struct, phi)
   phi_mutations = np.vstack((phi_good_mutations, phi_garbage))
+  omega = np.vstack((omega_good, omega_garb_observed))
 
-  omega_v = np.broadcast_to(0.5, (M + G, S))
-  variants = make_variants(phi_mutations, T, omega_v)
+  variants = make_variants(phi_mutations, T, omega)
   vids_good = ['s%s' % vidx for vidx in range(M)]
   vids_garbage = ['s%s' % vidx for vidx in range(M, M + G)]
   assert set(vids_good) == set([V for C in clusters for V in C])
@@ -329,14 +329,13 @@ def convert_to_numpy_array(data):
     arrays['cna_%ss' % key] = _extract_attr(data['cna_events'], key)
   return arrays
 
-def generate_data(K, S, T, M, C, H, G, alpha, tree_type):
+def generate_data(K, S, T, M, C, H, G, garbage_type, alpha, tree_type):
   # K: number of clusters (excluding normal root)
   # S: number of samples
   # T: reads per mutation
   # M: total number of SSMs
   # C: total number of CNAs
   # H: number of genomic segments
-  # G: number of (additional) garbage mutations
   ploidy = 2
 
   struct, phi, eta = generate_tree(K, S, alpha, tree_type)
@@ -349,10 +348,24 @@ def generate_data(K, S, T, M, C, H, G, alpha, tree_type):
     ssm_pops, \
     ssm_segs, \
     ssm_phases, \
-    ssm_timing = generate_ssms(K, M, G, S, T, segs, ploidy, phi, cna_events, alleles)
+    ssm_timing = generate_ssms(K, M, S, T, G, garbage_type, segs, ploidy, struct, phi, cna_events, alleles)
   cna_influence = _compute_cna_influence(struct, cna_events, ssm_segs, ssm_pops, ssm_phases, ssm_timing)
 
-  return {
+  # Include this as a separate data structure so that we can write `simdata` as
+  # a NumPy file. The NumPy format doesn't support dictionaries.
+  simparams = {
+    'K': K,
+    'S': S,
+    'T': T,
+    'M': M,
+    'C': C,
+    'H': H,
+    'G': G,
+    'garbage_type': garbage_type,
+    'alpha': alpha,
+    'tree_type': tree_type,
+  }
+  simdata = {
     'sampnames': ['Sample %s' % (sidx + 1) for sidx in range(S)],
     'structure': struct,
     'segments': segs,
@@ -373,3 +386,4 @@ def generate_data(K, S, T, M, C, H, G, alpha, tree_type):
     'cna_influence': cna_influence,
     'alleles': alleles,
   }
+  return (simdata, simparams)
