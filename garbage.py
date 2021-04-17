@@ -9,19 +9,6 @@ sys.path.append(os.path.expanduser('~/work/pairtree/lib'))
 import util
 from common import Models
 
-def _add_uniform(G, S):
-  phi_garb = np.random.uniform(size=(G,S))
-  return phi_garb
-
-def _add_missed_cna(G, phi_good, struct, omega=1.):
-  K, S = phi_good.shape
-  K -= 1 # Don't count root node.
-  indices = np.random.choice(np.arange(1, K+1), size=G, replace=True)
-  phi_garb = phi_good[indices]
-  omega_true = np.broadcast_to(1.0, (G,S))
-  omega_observed = np.broadcast_to(0.5, (G,S))
-  return (phi_garb, omega_true, omega_observed)
-
 def _make_noderels(struct):
   adjm = util.convert_parents_to_adjmatrix(struct)
   rels = util.compute_node_relations(adjm)
@@ -42,52 +29,89 @@ def _sample_node_pair_in_relation(K, rel, noderels):
       continue
     return (A, B)
 
-def _add_acquired_twice(G, phi_good, struct):
+def _is_garbage(phi_garb, phi_good):
+  K, S = phi_good.shape
+  assert phi_garb.shape == (S,)
+  for other in phi_good:
+    has_AB = np.any(other > phi_garb)
+    has_BA = np.any(other < phi_garb)
+    has_branched = np.any(other + phi_garb > 1)
+    if has_AB and has_BA and has_branched:
+      return True
+  return False
+
+def _add_uniform(phi_good, struct):
+  K, S = phi_good.shape
+  phi = np.random.uniform(size=S)
+  omega_diploid = np.broadcast_to(0.5, S)
+  return (phi, omega_diploid, omega_diploid)
+
+def _add_missed_cna(phi_good, struct, omega=1.):
+  K, S = phi_good.shape
+  K -= 1 # Correct for root node.
+
+  idx = np.random.choice(np.arange(1, K+1))
+  phi = phi_good[idx]
+  omega_true = np.broadcast_to(omega, S)
+  omega_observed = np.broadcast_to(0.5, S)
+  return (phi, omega_true, omega_observed)
+
+def _add_acquired_twice(phi_good, struct):
+  K, S = phi_good.shape
+  K -= 1 # Correct for root node.
   noderels = _make_noderels(struct)
-  phi_garb = []
-  K = len(phi_good) - 1
 
-  while len(phi_garb) < G:
-    A, B = _sample_node_pair_in_relation(K, Models.diff_branches, noderels)
-    if np.all(phi_good[A] < 0.5) or np.all(phi_good[B] < 0.5):
-      continue
-    phi = phi_good[A] + phi_good[B]
-    if np.any(phi >= 1.):
-      continue
-    print('merging', A, B, len(phi_garb) + len(phi))
-    print(np.array([phi_good[A], phi_good[B], phi]))
-    phi_garb.append(phi)
+  A, B = _sample_node_pair_in_relation(K, Models.diff_branches, noderels)
+  phi = phi_good[A] + phi_good[B]
+  assert np.all(phi <= 1.)
+  omega_diploid = np.broadcast_to(0.5, S)
+  return (phi, omega_diploid, omega_diploid)
 
-  return phi_garb
+def _add_wildtype_backmut(phi_good, struct):
+  K, S = phi_good.shape
+  K -= 1 # Correct for root node.
 
-def _add_wildtype_backmut(G, phi_good, struct):
   noderels = _make_noderels(struct)
-  phi_garb = []
-  K = len(phi_good) - 1
+  A, B = _sample_node_pair_in_relation(K, Models.A_B, noderels)
+  phi = phi_good[A] - phi_good[B]
+  assert np.all(phi >= 0)
+  omega_diploid = np.broadcast_to(0.5, S)
+  return (phi, omega_diploid, omega_diploid)
 
-  while len(phi_garb) < G:
-    A, B = _sample_node_pair_in_relation(K, Models.A_B, noderels)
-    assert np.all(phi_good[A] >= phi_good[B])
-    phi = phi_good[A] - phi_good[B]
-    phi_garb.append(phi)
+class TooManyAttemptsError(Exception):
+  pass
 
-  return phi_garb
-
-def generate(G, garbage_type, struct, phi_good):
+def generate(G, garbage_type, struct, phi_good, max_attempts=1000):
   _, S = phi_good.shape
   omega_diploid = np.broadcast_to(0.5, (G,S))
   omega_true = omega_observed = omega_diploid
 
   if garbage_type == 'uniform':
-    phi_garb = _add_uniform(G, S)
+    gen_garb = _add_uniform
   elif garbage_type == 'acquired_twice':
-    phi_garb = _add_acquired_twice(G, phi_good, struct)
+    gen_garb = _add_acquired_twice
   elif garbage_type == 'wildtype_backmut':
-    phi_garb = _add_wildtype_backmut(G, phi_good, struct)
+    gen_garb = _add_wildtype_backmut
   elif garbage_type == 'missed_cna':
     # Overwrite current `omega_true` and `omega_observed`.
-    phi_garb, omega_true, omega_observed = _add_missed_cna(G, phi_good, struct)
+    gen_garb = _add_missed_cna
   else:
     raise Exception('Unknown garbage type')
 
-  return (phi_garb, omega_true, omega_observed)
+  attempts = 0
+  phi_garb = []
+  omega_true = []
+  omega_observed = []
+
+  while len(phi_garb) < G:
+    attempts += 1
+    if attempts > max_attempts:
+      raise TooManyAttemptsError()
+    phi, o_true, o_obs = gen_garb(phi_good, struct)
+    if not _is_garbage(phi, phi_good):
+      continue
+    phi_garb.append(phi)
+    omega_true.append(o_true)
+    omega_observed.append(o_obs)
+
+  return [np.array(A) for A in (phi_garb, omega_true, omega_observed)]
