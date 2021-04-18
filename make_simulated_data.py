@@ -59,7 +59,7 @@ def main():
   parser.add_argument('--write-ssm-phi', action='store_true')
   parser.add_argument('--write-structures', action='store_true')
   parser.add_argument('--write-numpy', dest='numpy_fn')
-  parser.add_argument('--alpha', type=float, default=1., help='Alpha parameter used for sampling eta from Dirichlet')
+  parser.add_argument('--alpha', type=float, default=0.1, help='Alpha parameter used for sampling eta from Dirichlet')
   parser.add_argument('-K', dest='K', type=int, default=4, help='Number of clusters')
   parser.add_argument('-S', dest='S', type=int, default=3, help='Number of samples')
   parser.add_argument('-T', dest='T', type=int, default=4000, help='Total reads per mutation')

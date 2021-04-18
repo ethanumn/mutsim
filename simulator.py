@@ -66,12 +66,12 @@ def generate_tree(K, S, alpha, tree_type, eta_min=1e-30):
   assert np.allclose(1, phi[0])
   return (parents, phi, eta)
 
-def generate_read_counts(phi, omega_v, T):
+def generate_read_counts(phi, omega, T):
   M, S = phi.shape
   # T: total reads. Broadcast operation ensures V and T are same shape.
   T = np.broadcast_to(T, (M,S))
   # V: variant reads
-  V = np.random.binomial(n=T, p=omega_v*phi)
+  V = np.random.binomial(n=T, p=omega*phi)
   return (V, T)
 
 def add_noise(mat, sigma=0.09):
@@ -103,17 +103,18 @@ def make_clusters(ssmass):
   clusters = [clusters[cidx] for cidx in sorted(clusters.keys())]
   return clusters
 
-def make_variants(phi_mutations, T, omega_v):
-  V, T = generate_read_counts(phi_mutations, omega_v, T)
+def make_variants(phi_mutations, T, omega_true, omega_obs):
+  V, T = generate_read_counts(phi_mutations, omega_true, T)
 
   variants = OrderedDict()
-  for midx in range(len(omega_v)):
+  for midx in range(len(phi_mutations)):
     variant = {
       'id': 's%s' % midx,
       'name': 'S_%s' % midx,
       'var_reads': V[midx],
       'total_reads': T[midx],
-      'omega_v': omega_v[midx],
+      'omega_v': omega_obs[midx],
+      'omega_v_true': omega_true[midx],
       'phi': phi_mutations[midx],
     }
     variant['ref_reads'] = variant['total_reads'] - variant['var_reads']
@@ -287,12 +288,14 @@ def generate_ssms(K, M, S, T, G, garbage_type, segs, ploidy, struct, phi, cna_ev
   ssm_timing[no_gain_ssms] = -1
 
   phi_good_mutations = np.array([phi[cidx] for cidx in ssm_pops]) # MxS
-  omega_good = np.broadcast_to(0.5, (M, S))
-  phi_garbage, omega_garb_true, omega_garb_observed = garbage.generate(G, garbage_type, struct, phi)
+  omega_diploid = 0.5
+  omega_good = np.broadcast_to(omega_diploid, (M, S))
+  phi_garbage, omega_garb_true, omega_garb_observed = garbage.generate(G, garbage_type, struct, phi_good_mutations, omega_good, ssm_pops)
   phi_mutations = np.vstack((phi_good_mutations, phi_garbage))
-  omega = np.vstack((omega_good, omega_garb_observed))
 
-  variants = make_variants(phi_mutations, T, omega)
+  omega_obs  = np.vstack((omega_good, omega_garb_observed))
+  omega_true = np.vstack((omega_good, omega_garb_true))
+  variants = make_variants(phi_mutations, T, omega_obs, omega_true)
   vids_good = ['s%s' % vidx for vidx in range(M)]
   vids_garbage = ['s%s' % vidx for vidx in range(M, M + G)]
   assert set(vids_good) == set([V for C in clusters for V in C])

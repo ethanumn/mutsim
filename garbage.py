@@ -14,65 +14,80 @@ def _make_noderels(struct):
   rels = util.compute_node_relations(adjm)
   return rels
 
-def _choose_subset(P, Q):
-  '''
-  Sample `Q` indices from {0, 1, ..., P-1} without replacement.
-  '''
-  return np.random.choice(np.arange(P), size=Q, replace=False)
+def _find_mut_indices(kidx, ssm_ass):
+  return [idx for idx, ass in enumerate(ssm_ass) if ass == kidx]
 
-def _sample_node_pair_in_relation(K, rel, noderels):
-  assert K >= 2
+def _sample_mut_pair_in_relation(rel, struct, ssm_ass):
+  K = len(struct)
+  noderels = _make_noderels(struct)
+
   while True:
     # Sample indices from [1, 2, ..., K].
     A, B = np.random.choice(np.arange(1, K+1), size=2, replace=False)
     if noderels[A,B] != rel:
       continue
-    return (A, B)
+    A_muts, B_muts = _find_mut_indices(A, ssm_ass), _find_mut_indices(B, ssm_ass)
+    assert len(A_muts) > 0 and len(B_muts) > 0
 
-def _is_garbage(phi_garb, phi_good):
-  K, S = phi_good.shape
+    A_mut, B_mut = np.random.choice(A_muts), np.random.choice(B_muts)
+    assert A_mut != B_mut
+    return (A_mut, B_mut)
+
+def _is_garbage(phi_garb, omega_garb_true, omega_garb_obs, phi_good, omega_good):
+  _, S = phi_good.shape
   assert phi_garb.shape == (S,)
+
+  # We must test with phi_hat, not with phi, since these are the values
+  # Pairtree will see. A legitimate garbage mutation may be rendered garbage
+  # only by its implied phi_hat, not its true phi. For every case except
+  # "missed CNA", we will have phi_hat = phi, since omega_true = omega_obs =
+  # 0.5. But for "missed CNA", this is important.
+  allelefrac_garb = phi_garb * omega_garb_true
+  phi_hat_garb = allelefrac_garb / omega_garb_obs
+  phi_hat_garb = np.minimum(1., phi_hat_garb)
+
+  # Ensure that a putative garbage mutation is rendered garbage with respect to
+  # at least one legitimate mutation.
   for other in phi_good:
-    has_AB = np.any(other > phi_garb)
-    has_BA = np.any(other < phi_garb)
-    has_branched = np.any(other + phi_garb > 1)
+    has_AB = np.any(other > phi_hat_garb)
+    has_BA = np.any(other < phi_hat_garb)
+    has_branched = np.any(other + phi_hat_garb > 1)
     if has_AB and has_BA and has_branched:
+      print(phi_hat_garb, phi_garb)
       return True
   return False
 
-def _add_uniform(phi_good, struct):
-  K, S = phi_good.shape
+def _add_uniform(phi_good, omega_good, struct, ssm_ass):
+  _, S = phi_good.shape
   phi = np.random.uniform(size=S)
   omega_diploid = np.broadcast_to(0.5, S)
   return (phi, omega_diploid, omega_diploid)
 
-def _add_missed_cna(phi_good, struct, omega=1.):
-  K, S = phi_good.shape
-  K -= 1 # Correct for root node.
+def _add_missed_cna(phi_good, omega_good, struct, ssm_ass, omega_true=1., omega_obs=0.5):
+  M, S = phi_good.shape
 
-  idx = np.random.choice(np.arange(1, K+1))
+  idx = np.random.choice(np.arange(1, M))
+  assert np.allclose(0.5, omega_good[idx])
   phi = phi_good[idx]
-  omega_true = np.broadcast_to(omega, S)
-  omega_observed = np.broadcast_to(0.5, S)
-  return (phi, omega_true, omega_observed)
+  omega_true = np.broadcast_to(omega_true, S)
+  omega_obs = np.broadcast_to(omega_obs, S)
+  return (phi, omega_true, omega_obs)
 
-def _add_acquired_twice(phi_good, struct):
-  K, S = phi_good.shape
-  K -= 1 # Correct for root node.
-  noderels = _make_noderels(struct)
+def _add_acquired_twice(phi_good, omega_good, struct, ssm_ass):
+  K = len(struct)
+  _, S = phi_good.shape
 
-  A, B = _sample_node_pair_in_relation(K, Models.diff_branches, noderels)
+  A, B = _sample_mut_pair_in_relation(Models.diff_branches, struct, ssm_ass)
   phi = phi_good[A] + phi_good[B]
   assert np.all(phi <= 1.)
   omega_diploid = np.broadcast_to(0.5, S)
   return (phi, omega_diploid, omega_diploid)
 
-def _add_wildtype_backmut(phi_good, struct):
-  K, S = phi_good.shape
-  K -= 1 # Correct for root node.
+def _add_wildtype_backmut(phi_good, omega_good, struct, ssm_ass):
+  K = len(struct)
+  _, S = phi_good.shape
 
-  noderels = _make_noderels(struct)
-  A, B = _sample_node_pair_in_relation(K, Models.A_B, noderels)
+  A, B = _sample_mut_pair_in_relation(Models.A_B, struct, ssm_ass)
   phi = phi_good[A] - phi_good[B]
   assert np.all(phi >= 0)
   omega_diploid = np.broadcast_to(0.5, S)
@@ -81,11 +96,7 @@ def _add_wildtype_backmut(phi_good, struct):
 class TooManyAttemptsError(Exception):
   pass
 
-def generate(G, garbage_type, struct, phi_good, max_attempts=1000):
-  _, S = phi_good.shape
-  omega_diploid = np.broadcast_to(0.5, (G,S))
-  omega_true = omega_observed = omega_diploid
-
+def generate(G, garbage_type, struct, phi_good_muts, omega_good, ssm_ass, max_attempts=10000):
   if garbage_type == 'uniform':
     gen_garb = _add_uniform
   elif garbage_type == 'acquired_twice':
@@ -107,8 +118,8 @@ def generate(G, garbage_type, struct, phi_good, max_attempts=1000):
     attempts += 1
     if attempts > max_attempts:
       raise TooManyAttemptsError()
-    phi, o_true, o_obs = gen_garb(phi_good, struct)
-    if not _is_garbage(phi, phi_good):
+    phi, o_true, o_obs = gen_garb(phi_good_muts, omega_good, struct, ssm_ass)
+    if not _is_garbage(phi, o_true, o_obs, phi_good_muts, omega_good):
       continue
     phi_garb.append(phi)
     omega_true.append(o_true)
