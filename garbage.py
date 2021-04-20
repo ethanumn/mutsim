@@ -23,6 +23,9 @@ def _sample_mut_pair_in_relation(rel, struct, ssm_ass):
 
   while True:
     # Sample indices from [1, 2, ..., K].
+    # Sometimes the tree will not permit this. Raise an exception in this case.
+    if not np.any(noderels == rel):
+      raise simulator.TreeDoesNotSatisfyRelationsError()
     A, B = np.random.choice(np.arange(1, K+1), size=2, replace=False)
     if noderels[A,B] != rel:
       continue
@@ -33,7 +36,7 @@ def _sample_mut_pair_in_relation(rel, struct, ssm_ass):
     assert A_mut != B_mut
     return (A_mut, B_mut)
 
-def _is_garbage(phi_garb, omega_garb_true, omega_garb_obs, phi_good, omega_good):
+def _is_garbage(phi_garb, omega_garb_true, omega_garb_obs, phi_good, omega_good, min_delta=0.1):
   _, S = phi_good.shape
   assert phi_garb.shape == (S,)
 
@@ -49,11 +52,11 @@ def _is_garbage(phi_garb, omega_garb_true, omega_garb_obs, phi_good, omega_good)
   # Ensure that a putative garbage mutation is rendered garbage with respect to
   # at least one legitimate mutation.
   for other in phi_good:
-    has_AB = np.any(other > phi_hat_garb)
-    has_BA = np.any(other < phi_hat_garb)
-    has_branched = np.any(other + phi_hat_garb > 1)
+    has_AB       = np.any(other - phi_hat_garb     >= min_delta)
+    has_BA       = np.any(phi_hat_garb - other     >= min_delta)
+    has_branched = np.any(other + phi_hat_garb - 1 >= min_delta)
     if has_AB and has_BA and has_branched:
-      print(phi_hat_garb, phi_garb)
+      #print(phi_hat_garb, phi_garb)
       return True
   return False
 
@@ -93,10 +96,7 @@ def _add_wildtype_backmut(phi_good, omega_good, struct, ssm_ass):
   omega_diploid = np.broadcast_to(0.5, S)
   return (phi, omega_diploid, omega_diploid)
 
-class TooManyAttemptsError(Exception):
-  pass
-
-def generate(G, garbage_type, struct, phi_good_muts, omega_good, ssm_ass, max_attempts=10000):
+def generate(G, garbage_type, struct, phi_good_muts, omega_good, ssm_ass, max_attempts=100):
   if garbage_type == 'uniform':
     gen_garb = _add_uniform
   elif garbage_type == 'acquired_twice':
@@ -117,7 +117,7 @@ def generate(G, garbage_type, struct, phi_good_muts, omega_good, ssm_ass, max_at
   while len(phi_garb) < G:
     attempts += 1
     if attempts > max_attempts:
-      raise TooManyAttemptsError()
+      raise simulator.TooManyAttemptsError()
     phi, o_true, o_obs = gen_garb(phi_good_muts, omega_good, struct, ssm_ass)
     if not _is_garbage(phi, o_true, o_obs, phi_good_muts, omega_good):
       continue

@@ -149,7 +149,7 @@ def _generate_cna_events(K, H, C, ploidy, struct):
   while len(events) < C:
     attempts += 1
     if attempts > max_attempts:
-      raise Exception('Could not generate configuration without duplicates in %s attempts' % max_attempts)
+      raise TooManyAttemptsError('Could not generate configuration without duplicates in %s attempts' % max_attempts)
 
     cn_seg = np.random.choice(H, p=cn_seg_probs)
     cn_phase = np.random.choice(ploidy, p=cn_phase_probs)
@@ -390,3 +390,9 @@ def generate_data(K, S, T, M, C, H, G, garbage_type, alpha, tree_type):
     'alleles': alleles,
   }
   return (simdata, simparams)
+
+class TooManyAttemptsError(Exception):
+  pass
+
+class TreeDoesNotSatisfyRelationsError(Exception):
+  pass

@@ -79,20 +79,32 @@ def main():
     seed = args.seed
   np.random.seed(args.seed)
 
-  simdata, simparams = simulator.generate_data(
-    args.K,
-    args.S,
-    args.T,
-    args.M,
-    args.C,
-    args.H,
-    args.G,
-    args.garbage_type,
-    args.alpha,
-    args.tree_type
-  )
-  simdata['seed'] = seed
-  simdata['args'] = dict(vars(args))
+  max_attempts = 10
+  attempts = 0
+  while True:
+    attempts += 1
+    try:
+      simdata, simparams = simulator.generate_data(
+        args.K,
+        args.S,
+        args.T,
+        args.M,
+        args.C,
+        args.H,
+        args.G,
+        args.garbage_type,
+        args.alpha,
+        args.tree_type
+      )
+      break
+    except (simulator.TooManyAttemptsError, simulator.TreeDoesNotSatisfyRelationsError):
+      if attempts >= max_attempts:
+        raise
+      else:
+        print('Failed to satisfy required conditions on attempt %s, retrying ...' % attempts)
+        continue
+  simparams['seed'] = seed
+  simparams['args'] = dict(vars(args))
 
   write_full_data(simdata, simparams,args.truthfn)
   write_params(simdata, simparams, args.paramsfn, args.write_clusters, args.write_structures)
