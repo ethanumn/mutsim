@@ -68,6 +68,9 @@ def main():
   parser.add_argument('-H', dest='H', type=int, default=1, help='Number of genomic segments')
   parser.add_argument('-G', dest='G', type=int, default=0, help='Number of garbage mutations')
   parser.add_argument('--garbage-type', choices=('acquired_twice', 'wildtype_backmut', 'uniform', 'missed_cna'), default='uniform')
+  parser.add_argument('--min-garb-pairs', type=int, default=3)
+  parser.add_argument('--min-garb-phi-delta', type=float, default=0.1)
+  parser.add_argument('--min-garb-samps', type=int, default=1)
   parser.add_argument('truthfn')
   parser.add_argument('paramsfn')
   parser.add_argument('ssmfn')
@@ -79,7 +82,7 @@ def main():
     seed = args.seed
   np.random.seed(args.seed)
 
-  max_attempts = 10
+  max_attempts = 10000
   attempts = 0
   while True:
     attempts += 1
@@ -93,6 +96,9 @@ def main():
         args.H,
         args.G,
         args.garbage_type,
+        args.min_garb_pairs,
+        args.min_garb_phi_delta,
+        args.min_garb_samps,
         args.alpha,
         args.tree_type
       )

@@ -36,7 +36,7 @@ def _sample_mut_pair_in_relation(rel, struct, ssm_ass):
     assert A_mut != B_mut
     return (A_mut, B_mut)
 
-def _is_garbage(phi_garb, omega_garb_true, omega_garb_obs, phi_good, omega_good, min_delta=0.1):
+def _is_garbage(phi_garb, omega_garb_true, omega_garb_obs, phi_good, omega_good, min_garb_phi_delta=0.1, min_garb_samps=3, min_garb_pairs=3):
   _, S = phi_good.shape
   assert phi_garb.shape == (S,)
 
@@ -51,13 +51,23 @@ def _is_garbage(phi_garb, omega_garb_true, omega_garb_obs, phi_good, omega_good,
 
   # Ensure that a putative garbage mutation is rendered garbage with respect to
   # at least one legitimate mutation.
+  garb_pairs = 0
   for other in phi_good:
-    has_AB       = np.any(other - phi_hat_garb     >= min_delta)
-    has_BA       = np.any(phi_hat_garb - other     >= min_delta)
-    has_branched = np.any(other + phi_hat_garb - 1 >= min_delta)
-    if has_AB and has_BA and has_branched:
-      #print(phi_hat_garb, phi_garb)
-      return True
+    cannot_be = {
+      # phi_garb doesn't allow it to be on different branch relative to other
+      'branched': other + phi_hat_garb >= 1 + min_garb_phi_delta,
+      # phi_garb doesn't allow it to be ancestor of other
+      'AB':       other - phi_hat_garb >= min_garb_phi_delta,
+      # phi_garb doesn't allow it to be descendant of other
+      'BA':       phi_hat_garb - other >= min_garb_phi_delta,
+    }
+    num_cannot = {K: np.sum(V) for K,V in cannot_be.items()}
+
+    if np.all(np.array(list(num_cannot.values())) >= min_garb_samps):
+      print(num_cannot, phi_hat_garb, phi_garb, min_garb_phi_delta, min_garb_samps)
+      garb_pairs += 1
+      if garb_pairs >= min_garb_pairs:
+        return True
   return False
 
 def _add_uniform(phi_good, omega_good, struct, ssm_ass):
@@ -82,7 +92,6 @@ def _add_acquired_twice(phi_good, omega_good, struct, ssm_ass):
 
   A, B = _sample_mut_pair_in_relation(Models.diff_branches, struct, ssm_ass)
   phi = phi_good[A] + phi_good[B]
-  assert np.all(phi <= 1.)
   omega_diploid = np.broadcast_to(0.5, S)
   return (phi, omega_diploid, omega_diploid)
 
@@ -96,7 +105,19 @@ def _add_wildtype_backmut(phi_good, omega_good, struct, ssm_ass):
   omega_diploid = np.broadcast_to(0.5, S)
   return (phi, omega_diploid, omega_diploid)
 
-def generate(G, garbage_type, struct, phi_good_muts, omega_good, ssm_ass, max_attempts=100):
+def _ensure_between(A, lower, upper):
+  under = A < lower
+  over = A > upper
+
+  if np.any(under):
+    assert np.allclose(lower, A[under])
+    A[under] = lower
+  if np.any(over):
+    assert np.allclose(upper, A[over])
+    A[over] = upper
+  assert np.all(A >= lower) and np.all(A <= upper)
+
+def generate(G, garbage_type, min_garb_pairs, min_garb_phi_delta, min_garb_samps, struct, phi_good_muts, omega_good, ssm_ass, max_attempts=100):
   if garbage_type == 'uniform':
     gen_garb = _add_uniform
   elif garbage_type == 'acquired_twice':
@@ -114,13 +135,18 @@ def generate(G, garbage_type, struct, phi_good_muts, omega_good, ssm_ass, max_at
   omega_true = []
   omega_observed = []
 
+  _, S = phi_good_muts.shape
+
   while len(phi_garb) < G:
     attempts += 1
     if attempts > max_attempts:
       raise simulator.TooManyAttemptsError()
     phi, o_true, o_obs = gen_garb(phi_good_muts, omega_good, struct, ssm_ass)
-    if not _is_garbage(phi, o_true, o_obs, phi_good_muts, omega_good):
+    for A in (phi, o_true, o_obs):
+      _ensure_between(A, 0., 1.)
+    if not _is_garbage(phi, o_true, o_obs, phi_good_muts, omega_good, min_garb_phi_delta=min_garb_phi_delta, min_garb_samps=min_garb_samps, min_garb_pairs=min_garb_pairs):
       continue
+
     phi_garb.append(phi)
     omega_true.append(o_true)
     omega_observed.append(o_obs)
