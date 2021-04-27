@@ -103,7 +103,7 @@ def make_clusters(ssmass):
   clusters = [clusters[cidx] for cidx in sorted(clusters.keys())]
   return clusters
 
-def make_variants(phi_mutations, T, omega_true, omega_obs):
+def make_variants(phi_mutations, T, omega_obs, omega_true):
   V, T = generate_read_counts(phi_mutations, omega_true, T)
 
   variants = OrderedDict()
