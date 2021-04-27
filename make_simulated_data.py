@@ -68,6 +68,7 @@ def main():
   parser.add_argument('-H', dest='H', type=int, default=1, help='Number of genomic segments')
   parser.add_argument('-G', dest='G', type=int, default=0, help='Number of garbage mutations')
   parser.add_argument('--garbage-type', choices=('acquired_twice', 'wildtype_backmut', 'uniform', 'missed_cna'), default='uniform')
+  parser.add_argument('--make-missed-cna-obvious', action='store_true')
   parser.add_argument('--min-garb-pairs', type=int, default=3)
   parser.add_argument('--min-garb-phi-delta', type=float, default=0.1)
   parser.add_argument('--min-garb-samps', type=int, default=1)
@@ -99,11 +100,12 @@ def main():
         args.min_garb_pairs,
         args.min_garb_phi_delta,
         args.min_garb_samps,
+        args.make_missed_cna_obvious,
         args.alpha,
         args.tree_type
       )
       break
-    except (simulator.TooManyAttemptsError, simulator.TreeDoesNotSatisfyRelationsError):
+    except (simulator.TooManyAttemptsError, simulator.TreeDoesNotSatisfyRelationsError, simulator.NoBigEnoughPhiError):
       if attempts >= max_attempts:
         raise
       else:

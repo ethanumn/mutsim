@@ -64,7 +64,7 @@ def _is_garbage(phi_garb, omega_garb_true, omega_garb_obs, phi_good, omega_good,
     num_cannot = {K: np.sum(V) for K,V in cannot_be.items()}
 
     if np.all(np.array(list(num_cannot.values())) >= min_garb_samps):
-      print(num_cannot, phi_hat_garb, phi_garb, min_garb_phi_delta, min_garb_samps)
+      #print(num_cannot, phi_hat_garb, phi_garb, min_garb_phi_delta, min_garb_samps)
       garb_pairs += 1
       if garb_pairs >= min_garb_pairs:
         return True
@@ -76,10 +76,21 @@ def _add_uniform(phi_good, omega_good, struct, ssm_ass):
   omega_diploid = np.broadcast_to(0.5, S)
   return (phi, omega_diploid, omega_diploid)
 
-def _add_missed_cna(phi_good, omega_good, struct, ssm_ass, omega_true=1., omega_obs=0.5):
+def _add_missed_cna(phi_good, omega_good, struct, ssm_ass, omega_true=1., omega_obs=0.5, make_obvious=False):
   M, S = phi_good.shape
 
-  idx = np.random.choice(np.arange(1, M))
+  if make_obvious:
+    phi_good_threshold = 0.5
+    P = np.zeros(M)
+    P[np.any(phi_good > phi_good_threshold, axis=1)] = 1.
+    if np.all(P == 0):
+      raise simulator.NoBigEnoughPhiError()
+    else:
+      P /= np.sum(P)
+  else:
+    P = np.ones(M) / M
+  idx = np.random.choice(M, p=P)
+
   assert np.allclose(0.5, omega_good[idx])
   phi = phi_good[idx]
   omega_true = np.broadcast_to(omega_true, S)
@@ -117,7 +128,10 @@ def _ensure_between(A, lower, upper):
     A[over] = upper
   assert np.all(A >= lower) and np.all(A <= upper)
 
-def generate(G, garbage_type, min_garb_pairs, min_garb_phi_delta, min_garb_samps, struct, phi_good_muts, omega_good, ssm_ass, max_attempts=100):
+def generate(G, garbage_type, min_garb_pairs, min_garb_phi_delta, min_garb_samps, make_missed_cna_obvious, struct, phi_good_muts, omega_good, ssm_ass, max_attempts=100):
+  def __add_missed_cna(*args):
+    return _add_missed_cna(*args, make_obvious=make_missed_cna_obvious)
+
   if garbage_type == 'uniform':
     gen_garb = _add_uniform
   elif garbage_type == 'acquired_twice':
@@ -125,8 +139,7 @@ def generate(G, garbage_type, min_garb_pairs, min_garb_phi_delta, min_garb_samps
   elif garbage_type == 'wildtype_backmut':
     gen_garb = _add_wildtype_backmut
   elif garbage_type == 'missed_cna':
-    # Overwrite current `omega_true` and `omega_observed`.
-    gen_garb = _add_missed_cna
+    gen_garb = __add_missed_cna
   else:
     raise Exception('Unknown garbage type')
 
