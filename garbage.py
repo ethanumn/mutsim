@@ -76,13 +76,13 @@ def _add_uniform(phi_good, omega_good, struct, ssm_ass):
   omega_diploid = np.broadcast_to(0.5, S)
   return (phi, omega_diploid, omega_diploid)
 
-def _add_missed_cna(phi_good, omega_good, struct, ssm_ass, omega_true=1., omega_obs=0.5, make_obvious=False):
+def _add_missed_cna(phi_good, omega_good, struct, ssm_ass, omega_true=1., omega_obs=0.5, make_obvious=False, min_delta=0.01):
   M, S = phi_good.shape
 
   if make_obvious:
     phi_good_threshold = 0.5
     P = np.zeros(M)
-    P[np.any(phi_good > phi_good_threshold, axis=1)] = 1.
+    P[np.any(phi_good > phi_good_threshold + min_delta, axis=1)] = 1.
     if np.all(P == 0):
       raise simulator.NoBigEnoughPhiError()
     else:
@@ -130,7 +130,7 @@ def _ensure_between(A, lower, upper):
 
 def generate(G, garbage_type, min_garb_pairs, min_garb_phi_delta, min_garb_samps, make_missed_cna_obvious, struct, phi_good_muts, omega_good, ssm_ass, max_attempts=100):
   def __add_missed_cna(*args):
-    return _add_missed_cna(*args, make_obvious=make_missed_cna_obvious)
+    return _add_missed_cna(*args, make_obvious=make_missed_cna_obvious, min_delta=min_garb_phi_delta)
 
   if garbage_type == 'uniform':
     gen_garb = _add_uniform
