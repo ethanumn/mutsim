@@ -254,7 +254,7 @@ def _compute_cna_influence(struct, cna_events, ssm_segs, ssm_pops, ssm_phases, s
 
   return infl
 
-def generate_ssms(K, M, S, T, G, garbage_type, min_garb_pairs, min_garb_phi_delta, min_garb_samps, make_missed_cna_obvious, segs, ploidy, struct, phi, cna_events, alleles):
+def generate_ssms(K, M, S, T, G, garbage_type, min_garb_pairs, min_garb_phi_delta, min_garb_samps, segs, ploidy, struct, phi, cna_events, alleles):
   # We ensure that every population has at least one SSM.
   ssm_pops = assign_ssms_to_pops(M, K) # Mx1
   clusters = make_clusters(ssm_pops)
@@ -296,7 +296,6 @@ def generate_ssms(K, M, S, T, G, garbage_type, min_garb_pairs, min_garb_phi_delt
     min_garb_pairs,
     min_garb_phi_delta,
     min_garb_samps,
-    make_missed_cna_obvious,
     struct,
     phi_good_mutations,
     omega_good,
@@ -343,7 +342,7 @@ def convert_to_numpy_array(data):
     arrays['cna_%ss' % key] = _extract_attr(data['cna_events'], key)
   return arrays
 
-def generate_data(K, S, T, M, C, H, G, garbage_type, min_garb_pairs, min_garb_phi_delta, min_garb_samps, make_missed_cna_obvious, alpha, tree_type):
+def generate_data(K, S, T, M, C, H, G, garbage_type, min_garb_pairs, min_garb_phi_delta, min_garb_samps, alpha, tree_type):
   # K: number of clusters (excluding normal root)
   # S: number of samples
   # T: reads per mutation
@@ -372,7 +371,6 @@ def generate_data(K, S, T, M, C, H, G, garbage_type, min_garb_pairs, min_garb_ph
       min_garb_pairs,
       min_garb_phi_delta,
       min_garb_samps,
-      make_missed_cna_obvious,
       segs,
       ploidy,
       struct,

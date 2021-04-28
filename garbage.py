@@ -36,7 +36,7 @@ def _sample_mut_pair_in_relation(rel, struct, ssm_ass):
     assert A_mut != B_mut
     return (A_mut, B_mut)
 
-def _is_garbage(phi_garb, omega_garb_true, omega_garb_obs, phi_good, omega_good, min_garb_phi_delta=0.1, min_garb_samps=3, min_garb_pairs=3):
+def _is_pairwise_garbage(phi_garb, omega_garb_true, omega_garb_obs, phi_good, omega_good, min_garb_phi_delta=0.1, min_garb_samps=3, min_garb_pairs=3):
   _, S = phi_good.shape
   assert phi_garb.shape == (S,)
 
@@ -76,21 +76,28 @@ def _add_uniform(phi_good, omega_good, struct, ssm_ass):
   omega_diploid = np.broadcast_to(0.5, S)
   return (phi, omega_diploid, omega_diploid)
 
-def _add_missed_cna(phi_good, omega_good, struct, ssm_ass, omega_true=1., omega_obs=0.5, make_obvious=False, min_delta=0.01):
+def _add_missed_cna(phi_good, omega_good, struct, ssm_ass, omega_true=1., omega_obs=0.5):
+  M, S = phi_good.shape
+  idx = np.random.choice(M)
+  assert np.allclose(0.5, omega_good[idx])
+  phi = phi_good[idx]
+  omega_true = np.broadcast_to(omega_true, S)
+  omega_obs = np.broadcast_to(omega_obs, S)
+  return (phi, omega_true, omega_obs)
+
+def _add_obvs_missed_cna(phi_good, omega_good, struct, ssm_ass, omega_true=1., omega_obs=0.5, min_delta=0.01):
   M, S = phi_good.shape
 
-  if make_obvious:
-    phi_good_threshold = 0.5
-    P = np.zeros(M)
-    P[np.any(phi_good > phi_good_threshold + min_delta, axis=1)] = 1.
-    if np.all(P == 0):
-      raise simulator.NoBigEnoughPhiError()
-    else:
-      P /= np.sum(P)
+  P = np.zeros(M)
+  assert np.allclose(omega_good, omega_obs)
+  phi_apparent = (omega_true / omega_obs) * phi_good
+  P[np.any(phi_apparent > 1. + min_delta, axis=1)] = 1.
+  if np.all(P == 0):
+    raise simulator.NoBigEnoughPhiError()
   else:
-    P = np.ones(M) / M
-  idx = np.random.choice(M, p=P)
+    P /= np.sum(P)
 
+  idx = np.random.choice(M, p=P)
   assert np.allclose(0.5, omega_good[idx])
   phi = phi_good[idx]
   omega_true = np.broadcast_to(omega_true, S)
@@ -128,10 +135,7 @@ def _ensure_between(A, lower, upper):
     A[over] = upper
   assert np.all(A >= lower) and np.all(A <= upper)
 
-def generate(G, garbage_type, min_garb_pairs, min_garb_phi_delta, min_garb_samps, make_missed_cna_obvious, struct, phi_good_muts, omega_good, ssm_ass, max_attempts=100):
-  def __add_missed_cna(*args):
-    return _add_missed_cna(*args, make_obvious=make_missed_cna_obvious, min_delta=min_garb_phi_delta)
-
+def generate(G, garbage_type, min_garb_pairs, min_garb_phi_delta, min_garb_samps, struct, phi_good_muts, omega_good, ssm_ass, max_attempts=100):
   if garbage_type == 'uniform':
     gen_garb = _add_uniform
   elif garbage_type == 'acquired_twice':
@@ -140,6 +144,8 @@ def generate(G, garbage_type, min_garb_pairs, min_garb_phi_delta, min_garb_samps
     gen_garb = _add_wildtype_backmut
   elif garbage_type == 'missed_cna':
     gen_garb = __add_missed_cna
+  elif garbage_type == 'obvs_missed_cna':
+    gen_garb = lambda *args: _add_obvs_missed_cna(*args, min_delta=min_garb_phi_delta)
   else:
     raise Exception('Unknown garbage type')
 
@@ -157,7 +163,7 @@ def generate(G, garbage_type, min_garb_pairs, min_garb_phi_delta, min_garb_samps
     phi, o_true, o_obs = gen_garb(phi_good_muts, omega_good, struct, ssm_ass)
     for A in (phi, o_true, o_obs):
       _ensure_between(A, 0., 1.)
-    if not _is_garbage(phi, o_true, o_obs, phi_good_muts, omega_good, min_garb_phi_delta=min_garb_phi_delta, min_garb_samps=min_garb_samps, min_garb_pairs=min_garb_pairs):
+    if garbage_type != 'obvs_missed_cna' and not _is_pairwise_garbage(phi, o_true, o_obs, phi_good_muts, omega_good, min_garb_phi_delta=min_garb_phi_delta, min_garb_samps=min_garb_samps, min_garb_pairs=min_garb_pairs):
       continue
 
     phi_garb.append(phi)
