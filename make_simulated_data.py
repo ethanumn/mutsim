@@ -112,6 +112,8 @@ def main():
   simparams['seed'] = seed
   simparams['args'] = dict(vars(args))
 
+  simdata['seed'] = seed
+
   write_full_data(simdata, simparams,args.truthfn)
   write_params(simdata, simparams, args.paramsfn, args.write_clusters, args.write_structures)
   write_ssms(simdata, args.ssmfn, args.write_ssm_phi)

@@ -5,7 +5,7 @@ import sys
 import os
 
 import simulator
-sys.path.append(os.path.expanduser('~/work/pairtree/lib'))
+sys.path.append(os.path.expanduser(os.environ["LIB_DIR"] + '/pairtree/lib'))
 import util
 from common import Models
 

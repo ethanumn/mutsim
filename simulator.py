@@ -301,10 +301,19 @@ def generate_ssms(K, M, S, T, G, garbage_type, min_garb_pairs, min_garb_phi_delt
     omega_good,
     ssm_pops,
   )
-  phi_mutations = np.vstack((phi_good_mutations, phi_garbage))
+  
+  # np.vstack throws and error if we try to stack an empty array 
+  if len(phi_garbage) == 0:
+    phi_mutations = phi_good_mutations
+    omega_obs = omega_good
+    omega_true = omega_good
+    
+  else:
+    phi_mutations = np.vstack((phi_good_mutations, phi_garbage))
 
-  omega_obs  = np.vstack((omega_good, omega_garb_observed))
-  omega_true = np.vstack((omega_good, omega_garb_true))
+    omega_obs  = np.vstack((omega_good, omega_garb_observed))
+    omega_true = np.vstack((omega_good, omega_garb_true))
+    
   variants = make_variants(phi_mutations, T, omega_obs, omega_true)
   vids_good = ['s%s' % vidx for vidx in range(M)]
   vids_garbage = ['s%s' % vidx for vidx in range(M, M + G)]
