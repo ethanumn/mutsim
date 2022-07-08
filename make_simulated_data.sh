@@ -9,11 +9,11 @@ PARALLEL=40
 function make_simulated_data {
   mkdir -p $INDIR
 
-  for K in 10 20 30 50 100 150 200 250 300; do
-  for S in 1 3 10 30 50; do
+  for K in 10 30 50 100 200; do
+  for S in 10 20 30; do
   for T in 50 200 1000; do
   for M_per_cluster in 1; do
-  for G_frac in 0 0.01 0.1 1; do
+  for G_frac in 0; do
   for run in $(seq 1); do
     M=$(echo "$K * $M_per_cluster" | bc)
     G=$(echo "(($G_frac * $M) + 0.5) / 1" | bc)
