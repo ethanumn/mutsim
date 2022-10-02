@@ -1,4 +1,12 @@
 #!/bin/bash
+
+###############################################################################################################
+# make_simulated_data.sh
+#
+# Builds simulated mutation trees with known ground truth.
+#   
+###############################################################################################################
+
 set -euo pipefail
 
 PROTDIR=$LIB_DIR/mutsim
@@ -9,8 +17,8 @@ PARALLEL=40
 function make_simulated_data {
   mkdir -p $INDIR
 
-  for K in 10 30 50 100 200; do
-  for S in 10 20 30; do
+  for K in 10 30 50 100 150 200 250 300; do
+  for S in 3 5 10 20 30; do
   for T in 50 200 1000; do
   for M_per_cluster in 1; do
   for G_frac in 0; do
