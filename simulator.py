@@ -4,7 +4,7 @@ import garbage
 
 import sys
 import os
-sys.path.append(os.path.expanduser('~/work/pairtree/lib'))
+sys.path.append(os.path.expanduser(os.path.join(os.getcwd(), "..", "pairtree", "lib")))
 import util
 
 Cna = namedtuple('Cna', ('pop', 'seg', 'phase', 'delta'))
